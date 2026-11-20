@@ -1683,18 +1683,18 @@ function stageMei({ root, scope, state, finish }) {
 }
 
 const STAGES = [
-  { id: 'forge', no: '一', title: '積み沸かし・折り返し鍛錬', yomi: 'つみわかし・おりかえしたんれん', run: stageForge,
+  { id: 'forge', how: '鋼を真っ赤に沸かし、打って不純物を出し、折り返す。', ctrl: '長押しで加熱 → 輪が閉じたら打つ', no: '一', title: '積み沸かし・折り返し鍛錬', yomi: 'つみわかし・おりかえしたんれん', run: stageForge,
     intro: '日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。この玉鋼を小さく割って積み重ね、火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。<br>大鎚を振るう<strong>向こう槌</strong>は、師匠（横座）の小槌が示す場所と拍子に合わせて打つ。' },
-  { id: 'tsukuri', no: '二', title: '造り込み', yomi: 'つくりこみ', run: stageTsukuri,
+  { id: 'tsukuri', how: '硬い皮鉄で、柔らかい心鉄を包む。', ctrl: '中央に来たら落とす', no: '二', title: '造り込み', yomi: 'つくりこみ', run: stageTsukuri,
     intro: '鍛えた硬い<strong>皮鉄</strong>と、炭素の少ない柔らかい<strong>心鉄</strong>を組み合わせる。甲伏せ・本三枚などの方法があり、皮鉄で心鉄を包んで<strong>沸かし付け</strong>、一本の鋼にする。「折れず、曲がらず、よく切れる」日本刀の秘密はこの組み合わせにある。' },
-  { id: 'shape', no: '三', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
+  { id: 'shape', how: '叩いて刀の形に整える。', ctrl: '盛り上がりをタップ。冷えたら熱し直す', no: '三', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
     intro: '造り込んだ鋼を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。' },
-  { id: 'clay', no: '四', title: '土置き', yomi: 'つちおき', run: stageClay,
+  { id: 'clay', how: '刀身に土を塗り、刃文の線を描く。', ctrl: '刀身をなぞる', no: '四', title: '土置き', yomi: 'つちおき', run: stageClay,
     intro: '粘土・炭の粉・砥石の粉を混ぜた<strong>焼刃土</strong>を刀身に塗る。刃側は薄く、棟側は厚く置くことで、焼入れの冷え方に差が生まれ、硬い刃と粘り強い地、そして<strong>刃文</strong>が生まれる。' },
-  { id: 'quench', no: '五', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
+  { id: 'quench', how: '熱した刀を水に入れ、刃を硬くする。', ctrl: '「月の出の色」でタップ', no: '五', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
     intro: '刀鍛冶の最も緊張する瞬間。火の色を見極めるため鍛冶場を暗くし、刀身を均一に熱して一気に水へ入れる。急冷で刃が硬化し、日本刀特有の<strong>反り</strong>が生まれる。' },
-  { id: 'polish', no: '六', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
+  { id: 'polish', how: '砥石で研ぎ、刃文を浮かび上がらせる。', ctrl: '一定の速さで左右にこする', no: '六', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
     intro: '鍛冶押しを終えた刀は<strong>研師</strong>の手に渡る。荒砥から仕上砥まで十数種の砥石を使い分け、刀の姿を整え、地鉄の肌と刃文の美しさを引き出していく。' },
-  { id: 'mei', no: '七', title: '銘切り', yomi: 'めいきり', run: stageMei,
+  { id: 'mei', how: '茎に名を刻んで完成。', ctrl: '名前を入力', no: '七', title: '銘切り', yomi: 'めいきり', run: stageMei,
     intro: '茎に鑢目をかけ、<strong>鏨</strong>で刀工の名（銘）と年紀を刻む。銘は刀匠がその出来に責任を持つ証である。' }
 ];

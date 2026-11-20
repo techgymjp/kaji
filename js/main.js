@@ -47,7 +47,7 @@ function showTitle() {
   menu.append(
     btn('鍛刀を始める', 'primary big', () => newGame()),
     btn(`蔵を見る（${loadKura().length}）`, '', () => showKura()),
-    btn('工程について', '', () => showHowto())
+    btn('遊び方', '', () => showHowto())
   );
   wrap.append(menu);
   screen.append(wrap);
@@ -79,13 +79,14 @@ function showTitle() {
 /* ---------------- 遊び方 ---------------- */
 function showHowto() {
   clearScreen();
-  const wrap = el('section', 'page');
-  wrap.append(el('h2', '', '日本刀ができるまで'));
+  const wrap = el('section', 'page howto-page');
+  wrap.append(el('h2', '', '遊び方'));
+  wrap.append(el('p', 'howto-lead', '7つの工程で日本刀を打ち、最後に鑑定を受けます。'));
   const list = el('ol', 'howto');
-  STAGES.forEach(s => list.append(el('li', '', `<h3><span class="no">${s.no}</span>${s.title}<small>${s.yomi}</small></h3><p>${s.intro}</p>`)));
+  STAGES.forEach(s => list.append(el('li', '',
+    `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p><p class="ctrl"><span>操作</span>${s.ctrl}</p>`)));
   wrap.append(list);
-  wrap.append(el('p', 'note', '各工程の出来が「切れ味」「強靭さ」「美しさ」に影響し、最後に鑑定が行われます。パソコンではキーボード（Space / Enter）、スマートフォンではタップ・ドラッグで操作できます。'));
-  wrap.append(btn('戻る', '', () => showTitle()));
+  wrap.append(btn('戻る', 'big', () => showTitle()));
   screen.append(wrap);
 }
 

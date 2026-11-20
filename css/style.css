@@ -175,12 +175,21 @@ kbd { font-family: inherit; font-size: .85em; border: 1px solid var(--line); bor
 
 /* 遊び方・蔵 */
 .page h2 { font-size: 32px; letter-spacing: .2em; margin: 8px 0 12px; }
-.howto { list-style: none; padding: 0; margin: 0 0 16px; }
-.howto li { background: rgba(24, 18, 14, .8); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
-.howto h3 { margin: 0; font-size: 19px; }
-.howto h3 small { font-size: 12px; color: var(--muted); margin-left: 10px; font-weight: 400; }
-.howto .no { color: var(--accent); margin-right: .6em; }
-.howto p { margin: 4px 0 0; color: #d6cab6; font-size: 14.5px; }
+.howto-lead { font-size: 18px; margin: 0 0 14px; }
+.howto { list-style: none; padding: 0; margin: 0 0 20px; }
+.howto li { background: rgba(24, 18, 14, .85); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+.howto h3 { margin: 0 0 4px; font-size: 22px; letter-spacing: .05em; }
+.howto .no { color: var(--accent); margin-right: .5em; }
+.howto p { margin: 0; color: #e4d9c6; font-size: 18px; line-height: 1.6; }
+.howto p.ctrl { margin-top: 6px; color: #ffd9a0; }
+.howto p.ctrl span { display: inline-block; font-size: 14px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; margin-right: 8px; vertical-align: 2px; }
+@media (max-width: 640px) {
+  .howto-page h2 { font-size: 30px; }
+  .howto-lead { font-size: 19px; }
+  .howto h3 { font-size: 24px; }
+  .howto p { font-size: 19px; }
+  .howto li { padding: 14px 16px; }
+}
 .kura { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .kura-item { position: relative; background: rgba(24, 18, 14, .85); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px 12px; }
 .kura-canvas { width: 100%; max-width: 640px; display: block; }
