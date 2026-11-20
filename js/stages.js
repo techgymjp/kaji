@@ -281,7 +281,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       hammerFx = { x, y, t: 0 };
       shake = 3 + q * 7;
       T -= 9;
-      Sound.clang(0.45 + q * 0.55, false);
+      if (q === 1) Sound.clangPerfect(); else Sound.clang(0.45 + q * 0.55, false);
       parts.spark(x, y, Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
       parts.flake(x, y, Math.round(3 + q * 7));
     }

@@ -90,6 +90,19 @@ const Sound = (() => {
     now() { return ac ? ac.currentTime - (ac.outputLatency || 0) : performance.now() / 1000; },
     /* 師匠の小槌：軽く澄んだ「コン」 */
     tick() { tone(2650, 0.09, 0.12); tone(1720, 0.12, 0.07); noise(0.03, 'highpass', 3500, 0.7, 0.12); },
+    /* 会心の一打：濁りの少ない倍音で長く澄んで響く（鈴や良い鋼の鳴り） */
+    clangPerfect() {
+      if (!ac) return;
+      const f0 = 1760 * rand(0.995, 1.005);
+      // 整った倍音を、少しだけずらした2本ずつ重ねてきらめかせる
+      [[1, 0.16, 1.3], [2, 0.07, 0.9], [3, 0.035, 0.6], [4.2, 0.018, 0.4]].forEach(([m, g, d]) => {
+        tone(f0 * m, d, g, 'sine');
+        tone(f0 * m * 1.003, d * 0.9, g * 0.6, 'sine');
+      });
+      tone(f0 / 2, 0.5, 0.05, 'sine');
+      noise(0.03, 'highpass', 5000, 0.7, 0.18);       // 打った瞬間の明るい当たり
+      tone(110, 0.16, 0.3, 'triangle');                 // 打った重み
+    },
     thud() { noise(0.15, 'lowpass', 300, 0.7, 0.5); tone(70, 0.2, 0.3, 'sine'); },
     sizzle(dur = 2.6) {
       if (!ac) return;
