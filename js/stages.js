@@ -64,18 +64,20 @@ const HAMON_PRESETS = {
 /* 刀の名前の候補（実在の名刀の号は避ける） */
 const SWORD_NAMES = ['月影', '村雨', '朧月', '白露', '霞', '春雷', '時雨', '夕凪', '東雲', '青嵐', '初霜', '緋桜'];
 
-/* 一続きの作刀の区切り（進行表示と遊び方に使う） */
-const SECTIONS = [
-  { id: 'kawa', no: '一', title: L('皮鉄の鍛錬', 'Skin Steel'), yomi: L('かわがね', 'Kawagane'),
+/* 画面に出す区切り（進行表示・題目の帯・遊び方） */
+const VIEW_SECTIONS = [
+  { no: '一', title: L('皮鉄の鍛錬', 'Skin Steel'),
     how: L('叩いて伸ばし、切れ目を入れて折り返す。5回繰り返す。', 'Hammer it out, notch it, fold it. Five times.') },
-  { id: 'shin', no: '二', title: L('心鉄造り', 'Core Steel'), yomi: L('しんがね', 'Shingane'),
-    how: L('柔らかい心鉄を叩いて締める。', 'Hammer the soft core steel tight.') },
-  { id: 'tsukuri', no: '三', title: L('造り込み', 'Lamination'), yomi: L('つくりこみ', 'Tsukurikomi'),
-    how: L('皮鉄を叩いてU字に曲げ、心鉄を包んで鍛着する。', 'Bend the skin steel into a U and weld it around the core.') },
-  { id: 'nobashi', no: '四', title: L('打ち延ばし', 'Drawing Out'), yomi: L('うちのばし', 'Uchinobashi'),
+  { no: '二', title: L('造り込み', 'Lamination'),
+    how: L('柔らかい鋼を打ち締め、皮鉄をU字に曲げて包み、鍛着する。', 'Hammer the soft steel tight, bend the skin steel into a U around it, and weld.') },
+  { no: '三', title: L('打ち延ばし', 'Drawing Out'),
     how: L('刀の長さまで打ち延ばし、切先を打ち出す。', 'Draw it out to a blade and form the tip.') },
-  { id: 'yaki', no: '五', title: L('焼入れ', 'Quench'), yomi: L('やきいれ', 'Yaki-ire'),
+  { no: '四', title: L('焼入れ', 'Quench'),
     how: L('自動。ジュワッと水に入れ、反りが生まれる。', 'Automatic. Into the water — hiss — and the curve appears.') }
+];
+/* 内部の作業の区切り（view：画面に出す区切りの番号） */
+const SECTIONS = [
+  { id: 'kawa', view: 0 }, { id: 'shin', view: 1 }, { id: 'tsukuri', view: 1 }, { id: 'nobashi', view: 2 }, { id: 'yaki', view: 3 }
 ];
 
 /* ============================================================
@@ -86,7 +88,7 @@ const SECTIONS = [
  * ============================================================ */
 function stageKatana({ root, scope, state, finish, section }) {
   const ui = stageLayout(root,
-    L('師匠が叩いた<strong>リズムを、そのまま返せ</strong>。金の音符が線に重なった瞬間に叩く', 'Echo the <strong>master’s rhythm</strong> — strike as each gold note reaches the line') +
+    L('師匠の小槌を<strong>聴いて</strong>、次の小節で<strong>同じリズムを返せ</strong>', '<strong>Listen</strong> to the master, then <strong>echo the same rhythm</strong> in the next bar') +
     L('<span class="keys">（<kbd>Space</kbd>）</span>', '<span class="keys"> (<kbd>Space</kbd>)</span>'));
   const [c, g] = makeCanvas(860, 420, 'stage-canvas', 1.5);
   c.style.touchAction = 'none';
@@ -113,7 +115,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   /* ---------- 譜面：師匠が1小節叩いて見せ、次の1小節で同じリズムを返す ---------- */
   const chart = [];            // { t, who: 'M'|'P', step, judged, scheduled }
   const events = [];           // { t, kind: 'section'|'reheat'|'insert'|'yaki', id }
-  const respBars = new Set();
+  const respBars = new Set(), callBars = new Set();
   let bar = 0;
   const POOLS = {              // 8分音符の位置（0〜7）
     easy: [[0, 2, 4, 6]],
@@ -123,6 +125,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   const FOLD_POOL = [[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 5, 6], [0, 3, 5, 6], [0, 2, 3, 6]];
   const pick = a => a[Math.floor(Math.random() * a.length)];
   function callResponse(slots, steps) {
+    callBars.add(bar);
     slots.forEach((sl, i) => chart.push({ t: bar * BAR + sl * EIGHTH, who: 'M', step: steps[i] }));
     bar++;
     respBars.add(bar);
@@ -143,7 +146,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   }
   rest('section', { id: 'shin' });
   { const p = pick(POOLS.mid); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
-  rest('section', { id: 'tsukuri' });
+  events.push({ t: bar * BAR, kind: 'section', id: 'tsukuri' });   // 帯は出さず、そのまま造り込みへ
   callResponse([0, 4], [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
   rest('insert');
   callResponse(pick([[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 3, 6]]),
@@ -160,7 +163,7 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   // 進行
   let mode = 'play';           // play | yaki | done
-  let curSec = 0, bannerT = 0, reheatUntil = -1, insertAt = -1;
+  let curSec = 0, curView = -1, bannerT = 0, reheatUntil = -1, insertAt = -1;
   let t0 = 0, started = false;
   let masterFx = 0, masterX = CX, masterY = AY, hammerFx = null;
   let lastJudge = null;        // レーン上の判定表示 { text, t, q }
@@ -194,8 +197,10 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   function enterSection(id) {
     curSec = secIndex(id);
-    section && section(curSec);
-    bannerT = id === 'yaki' ? 1.3 : BAR;
+    const v = SECTIONS[curSec].view;
+    bannerT = v === curView ? 0 : id === 'yaki' ? 1.3 : BAR;
+    curView = v;
+    section && section(v);
     T = 1320;
   }
 
@@ -229,6 +234,7 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   function strike() {
     if (mode !== 'play' || !started) return;
+    if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) { /* 対応していない端末 */ } }
     Sound.init();
     const now = songT();
     let best = null, bd = 1e9;
@@ -263,7 +269,6 @@ function stageKatana({ root, scope, state, finish, section }) {
       shake = 3 + q * 7;
       T -= 9;
       Sound.clang(0.45 + q * 0.55, false);
-      if (navigator.vibrate) { try { navigator.vibrate(q >= 0.65 ? 18 : 8); } catch (e) { /* 無視 */ } }
       parts.spark(x, y, Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
       parts.flake(x, y, Math.round(3 + q * 7));
     }
@@ -327,8 +332,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     const carbonScore = clamp(1 - Math.abs(carbon - 0.68) / 0.3, 0, 1);
     state.scores = {
       kawa: Math.round(clamp((purity - 0.45) / 0.5 * 80 + carbonScore * 20, 0, 100)),
-      shin: Math.round(avg(acc.shin) * 100),
-      tsukuri: Math.round(avg(acc.tsukuri) * 100 * (1 - Math.abs(coreOff) / 40)),
+      tsukuri: Math.round(avg([...acc.shin, ...acc.tsukuri]) * 100 * (1 - Math.abs(coreOff) / 40)),
       nobashi: Math.round(avg(acc.nobashi) * 100),
       quench: Math.round(yk.qq * 100 * (yk.crack ? 0.4 : 1))
     };
@@ -524,22 +528,6 @@ function stageKatana({ root, scope, state, finish, section }) {
     else if (sec === 'nobashi') drawNobashi();
     else if (sec === 'yaki') { drawYaki(dt); return; }
 
-    // 次に叩く場所：輪が閉じたら叩く
-    const n = nextNote();
-    if (mode === 'play' && n && n.step.s === sec) {
-      const k = (n.t - songT()) / BEAT;
-      if (k < 1.2 && k > -0.2) {
-        const kk = clamp(k, 0, 1);
-        const st = n.step, x = targetX(st), ty = topY(st);
-        const u = 1.5 / cam.z;
-        g.strokeStyle = `rgba(255,214,120,${0.35 + 0.65 * (1 - kk)})`;
-        g.lineWidth = 3 * u;
-        g.beginPath(); g.arc(x, ty, (16 + kk * 60) * u, 0, TAU); g.stroke();
-        g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5 * u;
-        g.beginPath(); g.arc(x, ty, 16 * u, 0, TAU); g.stroke();
-        if (['notch', 'fold', 'bend', 'close', 'tip'].includes(st.k)) drawIcon(st.k, x, ty - (42 + kk * 20) * u, u * 1.1);
-      }
-    }
     if (masterFx > 0) {
       g.save();
       g.translate(masterX + 26, masterY - 18 - masterFx * 26);
@@ -585,73 +573,42 @@ function stageKatana({ root, scope, state, finish, section }) {
     cam.y = lerp(cam.y, clamp(t.y - 18 / cam.z, H * 0.6 / cam.z, H - H * 0.4 / cam.z), k);
   }
 
-  /* 譜面レーン（画面上部）：師匠の音符は小さな点、あなたの音符は金の丸 */
-  function drawLane() {
-    const uk = uiK(c, 1.8);
-    const LH = 54 * uk, y0 = 6, cy = y0 + LH / 2;
-    const JX = 64 * uk;
-    const SPEED = 250 * uk;
+  /* 番の表示：師匠の番（聴く）／あなたの番（返す）。タイミングは示さない */
+  function drawTurn() {
     const now = songT();
-    const xOf = t => JX + (t - now) * SPEED;
+    const b = Math.floor(now / BAR);
+    const turn = respBars.has(b) ? 'you' : callBars.has(b) ? 'master' : '';
+    const uk = uiK(c, 1.8);
     g.save();
-    g.fillStyle = 'rgba(8,5,3,0.72)';
-    g.fillRect(0, y0, W, LH);
-    // 小節：返す小節をうっすら金色に
-    const b0 = Math.floor((now - JX / SPEED) / BAR), b1 = Math.ceil((now + W / SPEED) / BAR);
-    for (let b = b0; b <= b1; b++) {
-      const x = xOf(b * BAR), x2 = xOf((b + 1) * BAR);
-      if (respBars.has(b)) { g.fillStyle = 'rgba(210,174,99,0.10)'; g.fillRect(x, y0, x2 - x, LH); }
-      g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(x, y0); g.lineTo(x, y0 + LH); g.stroke();
-      for (let q = 1; q < 4; q++) {
-        const xb = xOf(b * BAR + q * BEAT);
-        g.strokeStyle = 'rgba(255,255,255,0.05)';
-        g.beginPath(); g.moveTo(xb, y0 + LH * 0.3); g.lineTo(xb, y0 + LH * 0.7); g.stroke();
-      }
-    }
-    // 判定の位置
-    g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 2.5;
-    g.beginPath(); g.arc(JX, cy, 17 * uk, 0, TAU); g.stroke();
-    // 音符
-    for (const n of chart) {
-      const x = xOf(n.t);
-      if (x < -30 || x > W + 30) continue;
-      if (n.who === 'M') {
-        const past = n.t < now;
-        g.fillStyle = past ? 'rgba(150,135,110,0.35)' : 'rgba(190,170,135,0.9)';
-        g.beginPath(); g.arc(x, cy, 6 * uk, 0, TAU); g.fill();
-      } else if (!n.judged) {
-        const r = 14 * uk;
-        const gr = g.createRadialGradient(x - r * 0.3, cy - r * 0.3, 1, x, cy, r);
-        gr.addColorStop(0, '#fff2c8'); gr.addColorStop(0.5, '#f0c060'); gr.addColorStop(1, '#a8701c');
-        g.fillStyle = gr;
-        g.beginPath(); g.arc(x, cy, r, 0, TAU); g.fill();
-        g.strokeStyle = 'rgba(60,30,5,0.8)'; g.lineWidth = 1.2; g.stroke();
-        if (['notch', 'fold', 'bend', 'close', 'tip'].includes(n.step.k)) drawIcon(n.step.k, x, cy + 2 * uk, uk * 0.5, '#3a2006');
-      } else if (n.missed && n.t > now - 1) {
-        g.fillStyle = 'rgba(120,110,100,0.4)';
-        g.beginPath(); g.arc(x, cy, 10 * uk, 0, TAU); g.fill();
-      }
-    }
-    // 判定の文字
-    if (lastJudge && time - lastJudge.t < 0.5) {
-      const k = (time - lastJudge.t) / 0.5;
+    if (turn) {
+      const col = turn === 'you' ? '255,200,110' : '150,170,200';
+      const a = turn === 'you' ? 0.5 : 0.25;
+      const e = 26 * uk;
+      [[0, 0, W, e, 0, 0, 0, e], [0, H - e, W, e, 0, H, 0, H - e], [0, 0, e, H, 0, 0, e, 0], [W - e, 0, e, H, W, 0, W - e, 0]].forEach(([x, y, w, h, x1, y1, x2, y2]) => {
+        const gr = g.createLinearGradient(x1, y1, x2, y2);
+        gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`);
+        g.fillStyle = gr; g.fillRect(x, y, w, h);
+      });
       g.font = `bold ${Math.round(15 * uk)}px "Shippori Mincho", serif`;
       g.textAlign = 'center';
+      g.fillStyle = turn === 'you' ? 'rgba(255,220,150,0.95)' : 'rgba(200,210,225,0.8)';
+      g.fillText(turn === 'you' ? L('返す', 'Echo') : L('聴く', 'Listen'), W / 2, 12 + 15 * uk);
+    }
+    // 判定
+    if (lastJudge && time - lastJudge.t < 0.5) {
+      const k = (time - lastJudge.t) / 0.5;
+      g.font = `bold ${Math.round(18 * uk)}px "Shippori Mincho", serif`;
+      g.textAlign = 'center';
       g.fillStyle = lastJudge.q >= 1 ? `rgba(255,224,140,${1 - k})` : lastJudge.q >= 0.65 ? `rgba(240,230,210,${1 - k})` : `rgba(200,150,130,${1 - k})`;
-      g.fillText(lastJudge.text, JX, y0 + LH + 18 * uk - k * 6 * uk);
-      if (lastJudge.q >= 0.65) {
-        g.strokeStyle = `rgba(255,214,120,${1 - k})`; g.lineWidth = 3;
-        g.beginPath(); g.arc(JX, cy, 17 * uk + k * 14 * uk, 0, TAU); g.stroke();
-      }
+      g.fillText(lastJudge.text, W / 2, 12 + 40 * uk - k * 6 * uk);
     }
     g.restore();
-    return y0 + LH;
+    return 12 + 44 * uk;
   }
 
   function drawBanner() {
-    const s = SECTIONS[curSec];
-    const dur = s.id === 'yaki' ? 1.3 : BAR;
+    const s = VIEW_SECTIONS[curView];
+    const dur = SECTIONS[curSec].id === 'yaki' ? 1.3 : BAR;
     const k = clamp(bannerT / dur, 0, 1);
     const a = k > 0.8 ? (1 - k) / 0.2 : k < 0.2 ? k / 0.2 : 1;
     g.save();
@@ -660,7 +617,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     g.textAlign = 'center';
     g.fillStyle = `rgba(210,174,99,${a})`;
     g.font = `${fs(c, 18, 1.6)}px "Shippori Mincho", serif`;
-    g.fillText(L(`其の${s.no}`, `PART ${curSec + 1}`), W / 2, H / 2 - 12);
+    g.fillText(L(`其の${s.no}`, `PART ${curView + 1}`), W / 2, H / 2 - 12);
     g.fillStyle = `rgba(255,240,220,${a})`;
     g.font = `bold ${fs(c, 40, 1.5)}px "Shippori Mincho", serif`;
     g.fillText(s.title, W / 2, H / 2 + 38);
@@ -737,7 +694,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     // 画面に固定する表示
     g.save();
     let laneBottom = 0;
-    if (mode === 'play') laneBottom = drawLane();
+    if (mode === 'play') laneBottom = drawTurn();
     if (combo >= 2 && mode === 'play') {
       g.font = `bold ${fs(c, 22, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
       g.fillText(`${combo} ${L('連', 'combo')}`, 18, H - 16);
@@ -754,10 +711,10 @@ function stageKatana({ root, scope, state, finish, section }) {
     }
     g.restore();
 
-    const sec = SECTIONS[curSec];
+    const view = VIEW_SECTIONS[Math.max(0, curView)];
     ui.status.innerHTML =
-      `<div class="stat"><span>${sec.no}</span><b>${sec.title}</b></div>` +
-      (sec.id === 'kawa' ? `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}/${KAWA_FOLDS}</b></div>` : '') +
+      `<div class="stat"><span>${view.no}</span><b>${view.title}</b></div>` +
+      (SECTIONS[curSec].id === 'kawa' ? `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}/${KAWA_FOLDS}</b></div>` : '') +
       `<div class="stat"><span>${L('連打', 'Combo')}</span><b>${combo}</b></div>`;
   });
 }
@@ -765,6 +722,6 @@ function stageKatana({ root, scope, state, finish, section }) {
 
 const STAGES = [
   { id: 'katana', no: '一', title: L('作刀', 'Forge a Katana'), yomi: L('さくとう', 'Sakutō'), run: stageKatana,
-    intro: L('師匠（横座）が小槌で<strong>リズムを叩いて見せる</strong>。次の小節で、<strong>同じリズムを大鎚で返せ</strong>。<br>上の譜面で、金の音符が左の輪に重なった瞬間に叩く。鍛錬・造り込み・打ち延ばしを経て、最後は焼入れで「ジュワッ」。',
-      'The master taps a <strong>rhythm</strong> with his small hammer. In the next bar, <strong>echo it with your big hammer</strong>.<br>Strike as each gold note reaches the circle on the left. Forge, laminate, draw out — then quench with a hiss.') }
+    intro: L('師匠（横座）が小槌で1小節、<strong>リズムを叩いて聴かせる</strong>。次の小節で、<strong>同じリズムを大鎚で返せ</strong>。<br>譜面はない。耳で聴き、画面のどこかを叩く。鍛錬・造り込み・打ち延ばしを経て、最後は焼入れで「ジュワッ」。',
+      'The master taps a <strong>rhythm</strong> for one bar with his small hammer. In the next bar, <strong>echo it with your big hammer</strong>.<br>No notes on screen — listen, then tap anywhere. Forge, laminate, draw out — then quench with a hiss.') }
 ];

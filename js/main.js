@@ -25,7 +25,7 @@ function saveKura(list) {
 function renderHud(active) {
   hud.hidden = active < 0;
   stepsEl.innerHTML = '';
-  SECTIONS.forEach((s, i) => {
+  VIEW_SECTIONS.forEach((s, i) => {
     const li = el('li', i < active ? 'done' : i === active ? 'now' : '', `<span>${s.no}</span><em>${s.title}</em>`);
     stepsEl.append(li);
   });
@@ -84,10 +84,10 @@ function showHowto() {
   Music.setMood('calm');
   const wrap = el('section', 'page howto-page');
   wrap.append(el('h2', '', L('遊び方', 'How to Play')));
-  wrap.append(el('p', 'howto-lead', L('操作は<strong>叩くだけ</strong>。師匠が1小節リズムを叩いて見せたら、次の1小節で<strong>同じリズムを返す</strong>。金の音符が左の輪に重なった瞬間に、画面のどこかを叩く。',
-    'The only control is <strong>striking</strong>. The master taps a rhythm for one bar; <strong>echo the same rhythm</strong> in the next. Tap anywhere as each gold note reaches the circle.')));
+  wrap.append(el('p', 'howto-lead', L('操作は<strong>叩くだけ</strong>。師匠が1小節リズムを叩いて聴かせたら、次の1小節で<strong>同じリズムを返す</strong>。譜面はないので、耳で聴いて画面のどこかを叩く。',
+    'The only control is <strong>striking</strong>. The master taps a rhythm for one bar; <strong>echo the same rhythm</strong> in the next. There are no notes — listen, then tap anywhere.')));
   const list = el('ol', 'howto');
-  SECTIONS.forEach(s => list.append(el('li', '', `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p>`)));
+  VIEW_SECTIONS.forEach(s => list.append(el('li', '', `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p>`)));
   wrap.append(list);
   wrap.append(btn(L('戻る', 'Back'), 'big', () => showTitle()));
   screen.append(wrap);
@@ -187,9 +187,9 @@ const RANKS = [
 
 function computeResult(st) {
   const sc = st.scores;
-  const kw = sc.kawa ?? 50, sh = sc.shin ?? 50, k = sc.tsukuri ?? 50, n = sc.nobashi ?? 50, q = sc.quench ?? 50;
+  const kw = sc.kawa ?? 50, k = sc.tsukuri ?? 50, n = sc.nobashi ?? 50, q = sc.quench ?? 50;
   let sharp = 0.4 * kw + 0.15 * k + 0.45 * q;
-  let tough = 0.25 * kw + 0.35 * sh + 0.3 * k + 0.1 * n;
+  let tough = 0.3 * kw + 0.6 * k + 0.1 * n;
   let beauty = 0.3 * kw + 0.35 * n + 0.35 * q;
   if (st.crack) { tough *= 0.35; sharp *= 0.7; beauty *= 0.75; }
   const total = Math.round((sharp + tough + beauty) / 3);
@@ -200,7 +200,7 @@ function computeResult(st) {
 
 function appraiserWords(st, r) {
   const sc = st.scores;
-  const names = EN ? { kawa: 'skin-steel forging', shin: 'core steel', tsukuri: 'lamination', nobashi: 'drawing out', quench: 'quench' } : { kawa: '皮鉄の鍛錬', shin: '心鉄', tsukuri: '造り込み', nobashi: '打ち延ばし', quench: '焼入れ' };
+  const names = EN ? { kawa: 'skin-steel forging', tsukuri: 'lamination', nobashi: 'drawing out', quench: 'quench' } : { kawa: '皮鉄の鍛錬', tsukuri: '造り込み', nobashi: '打ち延ばし', quench: '焼入れ' };
   const ent = Object.entries(sc).filter(([k]) => names[k]);
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
@@ -241,7 +241,7 @@ function swordOptions(rec, x, y, length, width) {
 function showAppraisal() {
   clearScreen();
   Music.setMood('finale');
-  renderHud(SECTIONS.length);
+  renderHud(VIEW_SECTIONS.length);
   const r = computeResult(state);
   const rec = {
     id: Date.now(),
@@ -289,7 +289,6 @@ function showAppraisal() {
   const sc = state.scores;
   detail.innerHTML = `
     <dt>${L('皮鉄', 'Skin')}</dt><dd>${sc.kawa}${PO}${L(`折り返し${state.folds}回`, `${state.folds} folds`)}${PC}</dd>
-    <dt>${L('心鉄', 'Core')}</dt><dd>${sc.shin}</dd>
     <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}</dd>
     <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${sc.nobashi}</dd>
     <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd>
