@@ -92,10 +92,21 @@ function stageKatana({ root, scope, state, finish, section }) {
   const ui = stageLayout(root,
     L('師匠の小槌を<strong>聴いて</strong>、次の小節で<strong>同じリズムを返せ</strong>', '<strong>Listen</strong> to the master, then <strong>echo the same rhythm</strong> in the next bar') +
     L('<span class="keys">（<kbd>Space</kbd>）</span>', '<span class="keys"> (<kbd>Space</kbd>)</span>'));
-  const [c, g] = makeCanvas(860, 420, 'stage-canvas', 1.5);
+  /* 画面（キャンバス）の大きさ。縦持ちのスマホでは縦長にして、空いた下半分も絵に使う。
+     世界の座標（W×H）はそのままで、カメラが寄って大きく映す */
+  const W = 860, H = 420;
+  let VW = 860, VH = 420;
+  const portrait = window.innerWidth < 700 && window.innerHeight > window.innerWidth * 1.2;
+  if (portrait) {
+    const top = ui.view.getBoundingClientRect().top;
+    const cssW = window.innerWidth;
+    const avail = window.innerHeight - top - 64;           // 下の状態表示ぶんを残す
+    VW = 430;
+    VH = Math.round(VW * clamp(avail / cssW, 0.9, 1.75));
+  }
+  const [c, g] = makeCanvas(VW, VH, 'stage-canvas', 1.5);
   c.style.touchAction = 'none';
   ui.view.append(c);
-  const W = c.W, H = c.H;
   const parts = makeParticles();
   const CX = 570, AY = H * 0.72 - 50;
   const KAWA_FOLDS = 5, KAWA_LEN = 150, KAWA_AREA = KAWA_LEN * 36;
@@ -556,7 +567,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   function drawYaki(dt) {
     const t = yk.t;
     const dark = clamp((t - 0.6) / 0.8, 0, 1) * 0.85;
-    g.fillStyle = `rgba(0,0,0,${dark})`; g.fillRect(0, 0, W, H);
+    g.fillStyle = `rgba(0,0,0,${dark})`; g.fillRect(-2000, -2000, 5000, 5000);
     // 水槽
     g.fillStyle = '#1b130d'; g.fillRect(60, 300, 740, 110);
     const wg = g.createLinearGradient(0, 312, 0, 410);
@@ -603,6 +614,9 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   function drawScene(dt) {
     const sec = SECTIONS[curSec].id;
+    // 縦長の画面では世界の上下も見えるので、壁と土間を延ばして描く
+    g.fillStyle = '#120c09'; g.fillRect(-1000, -1500, W + 2000, 1500 + H * 0.72);
+    g.fillStyle = '#17100b'; g.fillRect(-1000, H * 0.72, W + 2000, 1500);
     if (sec === 'nobashi' || sec === 'yaki') drawSmithy(g, W, H, heatGlow(T), -600);
     else drawSmithy(g, W, H, heatGlow(T), CX - 105);
     if (songT() < reheatUntil) drawReheat();
@@ -665,22 +679,26 @@ function stageKatana({ root, scope, state, finish, section }) {
   const cam = { x: CX, y: AY - 45, z: 2.1 };
   function camTarget() {
     const sec = SECTIONS[curSec].id;
-    if (sec === 'yaki') return { x: W / 2, y: H * 0.6, z: 1 };
-    if (sec === 'tsukuri') return { x: CX, y: AY - 70, z: 1.75 };
+    if (sec === 'yaki') return { x: W / 2, y: H * 0.55, z: Math.min(1, VW / 760) };
+    const zk = portrait ? 0.68 : 1;                      // 縦画面はキャンバス自体が拡大されているので寄りを抑える
+    if (sec === 'tsukuri') return { x: CX, y: AY - 70, z: 1.75 * zk };
     if (sec === 'nobashi') {
       const st = curStep();
       const fx = st.s === 'nobashi' ? targetX(st) : NOB_X + nobLen / 2;
-      return { x: fx, y: AY - 32, z: 1.9 };
+      return { x: fx, y: AY - 32, z: 1.9 * zk };
     }
-    return { x: CX, y: AY - 45, z: 2.1 };
+    return { x: CX, y: AY - 45, z: 2.1 * zk };
   }
   function updateCam(dt) {
     const t = camTarget();
     const k = 1 - Math.pow(0.03, dt);
     cam.z = lerp(cam.z, t.z, k);
-    cam.x = lerp(cam.x, clamp(t.x, W / (2 * cam.z), W - W / (2 * cam.z)), k);
+    const vw = VW / cam.z, vh = VH / cam.z;               // 見えている世界の幅・高さ
+    const tx = vw >= W ? W / 2 : clamp(t.x, vw / 2, W - vw / 2);
+    cam.x = lerp(cam.x, tx, k);
     // 上の譜面レーンに隠れないよう、鉄は少し下寄りに置く
-    cam.y = lerp(cam.y, clamp(t.y - 18 / cam.z, H * 0.6 / cam.z, H - H * 0.4 / cam.z), k);
+    const ty = vh >= H ? H * 0.55 : clamp(t.y - 18 / cam.z, vh * 0.6, H - vh * 0.4);
+    cam.y = lerp(cam.y, ty, k);
   }
 
   /* 番の表示：師匠の番（聴く）／あなたの番（返す）。タイミングは示さない */
@@ -694,7 +712,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       const col = turn === 'you' ? '255,200,110' : '150,170,200';
       const a = turn === 'you' ? 0.5 : 0.25;
       const e = 26 * uk;
-      [[0, 0, W, e, 0, 0, 0, e], [0, H - e, W, e, 0, H, 0, H - e], [0, 0, e, H, 0, 0, e, 0], [W - e, 0, e, H, W, 0, W - e, 0]].forEach(([x, y, w, h, x1, y1, x2, y2]) => {
+      [[0, 0, VW, e, 0, 0, 0, e], [0, VH - e, VW, e, 0, VH, 0, VH - e], [0, 0, e, VH, 0, 0, e, 0], [VW - e, 0, e, VH, VW, 0, VW - e, 0]].forEach(([x, y, w, h, x1, y1, x2, y2]) => {
         const gr = g.createLinearGradient(x1, y1, x2, y2);
         gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`);
         g.fillStyle = gr; g.fillRect(x, y, w, h);
@@ -702,7 +720,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       g.font = `bold ${Math.round(15 * uk)}px "Shippori Mincho", serif`;
       g.textAlign = 'center';
       g.fillStyle = turn === 'you' ? 'rgba(255,220,150,0.95)' : 'rgba(200,210,225,0.8)';
-      g.fillText(turn === 'you' ? L('返す', 'Echo') : L('聴く', 'Listen'), W / 2, 12 + 15 * uk);
+      g.fillText(turn === 'you' ? L('返す', 'Echo') : L('聴く', 'Listen'), VW / 2, 12 + 15 * uk);
     }
     // 判定
     if (lastJudge && time - lastJudge.t < 0.5) {
@@ -710,7 +728,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       g.font = `bold ${Math.round(18 * uk)}px "Shippori Mincho", serif`;
       g.textAlign = 'center';
       g.fillStyle = lastJudge.q >= 1 ? `rgba(255,224,140,${1 - k})` : lastJudge.q >= 0.65 ? `rgba(240,230,210,${1 - k})` : `rgba(200,150,130,${1 - k})`;
-      g.fillText(lastJudge.text, W / 2, 12 + 40 * uk - k * 6 * uk);
+      g.fillText(lastJudge.text, VW / 2, 12 + 40 * uk - k * 6 * uk);
     }
     g.restore();
     return 12 + 44 * uk;
@@ -724,14 +742,14 @@ function stageKatana({ root, scope, state, finish, section }) {
     const a = k > 0.8 ? (1 - k) / 0.2 : k < 0.2 ? k / 0.2 : 1;
     g.save();
     g.fillStyle = `rgba(0,0,0,${0.55 * a})`;
-    g.fillRect(0, H / 2 - 50, W, 120);
+    g.fillRect(0, VH / 2 - 50, VW, 120);
     g.textAlign = 'center';
     g.fillStyle = `rgba(210,174,99,${a})`;
     g.font = `${fs(c, 18, 1.6)}px "Shippori Mincho", serif`;
-    g.fillText(L(`其の${s.no}`, `PART ${curView + 1}`), W / 2, H / 2 - 12);
+    g.fillText(L(`其の${s.no}`, `PART ${curView + 1}`), VW / 2, VH / 2 - 12);
     g.fillStyle = `rgba(255,240,220,${a})`;
     g.font = `bold ${fs(c, 40, 1.5)}px "Shippori Mincho", serif`;
-    g.fillText(s.title, W / 2, H / 2 + 38);
+    g.fillText(s.title, VW / 2, VH / 2 + 38);
     g.restore();
   }
 
@@ -809,10 +827,10 @@ function stageKatana({ root, scope, state, finish, section }) {
     }
 
     updateCam(dt);
-    g.fillStyle = '#0c0807'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#0c0807'; g.fillRect(0, 0, VW, VH);
     g.save();
     if (shake > 0) g.translate(rand(-shake, shake) * 0.5, rand(-shake, shake) * 0.5);
-    g.translate(W / 2, H * 0.6); g.scale(cam.z, cam.z); g.translate(-cam.x, -cam.y);
+    g.translate(VW / 2, VH * 0.6); g.scale(cam.z, cam.z); g.translate(-cam.x, -cam.y);
     if (mode === 'yaki' && yk.t < 0) drawScene(0); else drawScene(dt);
     parts.draw(g);
     g.restore();
@@ -822,17 +840,17 @@ function stageKatana({ root, scope, state, finish, section }) {
     if (mode === 'play') laneBottom = drawTurn();
     if (combo >= 2 && mode === 'play') {
       g.font = `bold ${fs(c, 22, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
-      g.fillText(`${combo} ${L('連', 'combo')}`, 18, H - 16);
+      g.fillText(`${combo} ${L('連', 'combo')}`, 18, VH - 16);
     }
     if (now < reheatUntil && mode === 'play') {
       g.font = `bold ${fs(c, 20, 1.7)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe2b0';
-      g.fillText(L('沸かし直し', 'Reheating'), W / 2, laneBottom + fs(c, 26, 1.7));
+      g.fillText(L('沸かし直し', 'Reheating'), VW / 2, laneBottom + fs(c, 26, 1.7));
     }
     if (bannerT > 0) drawBanner();
     if (msgT > 0 && mode === 'play') {
       g.font = `bold ${fs(c, 22, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';
       g.fillStyle = `rgba(255,236,200,${clamp(msgT * 2, 0, 1)})`;
-      g.fillText(msg, W / 2, laneBottom + fs(c, 52, 1.6));
+      g.fillText(msg, VW / 2, laneBottom + fs(c, 52, 1.6));
     }
     g.restore();
 

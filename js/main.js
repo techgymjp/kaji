@@ -340,7 +340,7 @@ function showAppraisal() {
   const [PO, PC] = EN ? [' (', ')'] : ['（', '）'];
   const sc = state.scores;
   detail.innerHTML = `
-    <dt>${L('皮鉄', 'Skin')}</dt><dd>${sc.kawa}${PO}${L(`折り返し${state.folds}回`, `${state.folds} folds`)}${PC}</dd>
+    <dt>${L('皮鉄', 'Skin')}</dt><dd>${sc.kawa}${PO}${L(`${state.folds}回`, `${state.folds}×`)}${PC}</dd>
     <dt>${L('心鉄', 'Core')}</dt><dd>${sc.shin ?? '-'}</dd>
     <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}</dd>
     <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${sc.nobashi}</dd>
