@@ -1,7 +1,9 @@
 'use strict';
 /* 鑑定結果のシェア：SNS 用の画像（1200×630）とテキストを作る */
 const Share = (() => {
-  const gameUrl = () => location.origin + location.pathname;
+  /* シェアで案内するページ（ゲームの紹介記事） */
+  const SHARE_URL = 'https://techgym.jp/column/claude-code-game-kaji/';
+  const gameUrl = () => SHARE_URL;
 
   function text(rec) {
     return EN
@@ -52,7 +54,7 @@ const Share = (() => {
       g.fillStyle = gr; g.fillRect(x, y + 22, 320 * v / 100, 12);
     });
     g.textAlign = 'right'; g.fillStyle = '#8a7c68'; g.font = `400 20px ${F}`;
-    g.fillText(gameUrl().replace(/^https?:\/\//, ''), W - 56, H - 48);
+    g.fillText(gameUrl().replace(/^https?:\/\//, '').replace(/\/$/, ''), W - 56, H - 48);
     return c;
   }
 
