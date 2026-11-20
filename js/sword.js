@@ -61,6 +61,8 @@ const HeatTex = (() => {
   }
   const cache = new WeakMap();
   return {
+    /* ゲーム開始前に生成しておく */
+    warm() { if (!canv) build(); },
     pattern(ctx, kind, ox, oy, sc) {
       if (!canv) build();
       let m = cache.get(ctx);

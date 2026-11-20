@@ -100,8 +100,8 @@ function stageKatana({ root, scope, state, finish, section }) {
   const CX = 570, AY = H * 0.72 - 50;
   const KAWA_FOLDS = 5, KAWA_LEN = 150, KAWA_AREA = KAWA_LEN * 36;
   const NOB_X = 70, NOB_MAX = 700;
-  const BPM = 104, BEAT = 60 / BPM, BAR = BEAT * 4, EIGHTH = BEAT / 2;
-  const WIN = { perfect: 0.05, good: 0.1, ok: 0.17 };
+  const BEAT = 60 / 108;       // 最初のテンポ（進むほど速くなる）
+  const WIN = { perfect: 0.045, good: 0.085, ok: 0.13 };
 
   let T = 1320;
   let purity = 0.44, carbon = 0.88 + Math.random() * 0.04;
@@ -119,52 +119,69 @@ function stageKatana({ root, scope, state, finish, section }) {
   const events = [];           // { t, kind: 'section'|'reheat'|'insert'|'yaki', id }
   const respBars = new Set(), callBars = new Set();
   let bar = 0;
-  const POOLS = {              // 8分音符の位置（0〜7）
-    easy: [[0, 2, 4, 6]],
-    mid: [[0, 2, 4, 6], [0, 2, 3, 4, 6], [0, 1, 2, 4, 6], [0, 3, 4, 6], [0, 2, 4, 5, 6]],
-    hard: [[0, 2, 3, 5, 6], [0, 1, 2, 4, 5, 6], [0, 3, 4, 6, 7], [0, 2, 3, 4, 6, 7], [0, 1, 3, 4, 6]]
+  // 小節ごとの開始時刻と拍の長さ（テンポが途中で変わる）
+  const barStart = [0], barBeat = [];
+  let curBeat = BEAT;
+  const setBpm = bpm => { curBeat = 60 / bpm; };
+  function nextBar() { barBeat[bar] = curBeat; barStart[bar + 1] = barStart[bar] + curBeat * 4; bar++; }
+  const at = sl => barStart[bar] + sl * curBeat / 4;       // 16分音符の位置（0〜15）
+  const POOLS = {              // 16分音符の位置（0〜15）
+    easy: [[0, 4, 8, 12]],
+    mid: [[0, 4, 6, 8, 12], [0, 2, 4, 8, 12], [0, 4, 8, 10, 12], [0, 4, 6, 8, 10, 12], [0, 3, 4, 8, 12], [0, 6, 8, 12]],
+    hard: [[0, 2, 4, 6, 8, 12], [0, 3, 6, 8, 12], [0, 4, 6, 7, 8, 12], [0, 2, 3, 4, 8, 10, 12], [0, 3, 6, 8, 11, 12], [0, 4, 5, 6, 8, 12, 14]],
+    expert: [[0, 1, 2, 4, 6, 8, 10, 11, 12], [0, 3, 6, 9, 12, 14], [0, 2, 3, 5, 6, 8, 11, 12], [0, 3, 4, 7, 8, 11, 12, 14], [0, 1, 4, 6, 7, 10, 12, 13]]
   };
-  const FOLD_POOL = [[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 5, 6], [0, 3, 5, 6], [0, 2, 3, 6]];
+  const FOLD_POOL = [[0, 4, 8, 12], [0, 6, 8, 12], [0, 4, 10, 12], [0, 3, 6, 8], [0, 2, 8, 10], [0, 6, 10, 12], [0, 3, 8, 11]];
   const pick = a => a[Math.floor(Math.random() * a.length)];
   function callResponse(slots, steps) {
     callBars.add(bar);
-    slots.forEach((sl, i) => chart.push({ t: bar * BAR + sl * EIGHTH, who: 'M', step: steps[i] }));
-    bar++;
+    slots.forEach((sl, i) => chart.push({ t: at(sl), who: 'M', step: steps[i] }));
+    nextBar();
     respBars.add(bar);
-    slots.forEach((sl, i) => chart.push({ t: bar * BAR + sl * EIGHTH, who: 'P', step: steps[i] }));
-    bar++;
+    slots.forEach((sl, i) => chart.push({ t: at(sl), who: 'P', step: steps[i] }));
+    nextBar();
   }
-  function rest(kind, extra = {}) { events.push({ t: bar * BAR, kind, ...extra }); bar++; }
+  function rest(kind, extra = {}) { events.push({ t: barStart[bar], dur: curBeat * 4, kind, ...extra }); nextBar(); }
   const spread = (s, k, slots, from, to, extra = {}) =>
     slots.map((_, i) => ({ s, k, p: from + (to - from) * i / Math.max(1, slots.length - 1), n: slots.length, ...extra }));
 
+  setBpm(108);
   rest('section', { id: 'kawa' });
   for (let f = 0; f < KAWA_FOLDS; f++) {
-    const sp = pick(POOLS[f < 1 ? 'easy' : f < 3 ? 'mid' : 'hard']);
+    setBpm(108 + f * 4);
+    const sp = pick(POOLS[f < 1 ? 'easy' : f < 2 ? 'mid' : f < 4 ? 'hard' : 'expert']);
     callResponse(sp, spread('kawa', 'spread', sp, 0.12, 0.92));
     const fp = f < 1 ? FOLD_POOL[0] : pick(FOLD_POOL);
     callResponse(fp, [{ s: 'kawa', k: 'notch' }, { s: 'kawa', k: 'fold' }, { s: 'kawa', k: 'weld', p: 0.3 }, { s: 'kawa', k: 'weld', p: 0.7, last: true }]);
     if (f === 1 || f === 3) rest('reheat');
   }
+  setBpm(120);
   rest('section', { id: 'shin' });
-  { const p = pick(POOLS.mid); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
+  { const p = pick(POOLS.hard); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
   rest('section', { id: 'tsukuri' });
-  callResponse([0, 4], [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
+  callResponse(pick([[0, 8], [0, 6], [0, 10]]), [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
   rest('insert');
-  callResponse(pick([[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 3, 6]]),
+  callResponse(pick([[0, 4, 8, 12], [0, 6, 8, 12], [0, 3, 8, 12], [0, 4, 6, 12]]),
     [{ s: 'tsukuri', k: 'close', p: -1 }, { s: 'tsukuri', k: 'close', p: 1 }, { s: 'tsukuri', k: 'weld', p: 0 }, { s: 'tsukuri', k: 'weld', p: 0 }]);
+  setBpm(126);
   rest('section', { id: 'nobashi' });
   {
-    const d1 = pick(POOLS.mid), d2 = pick(POOLS.hard), nd = d1.length + d2.length;
+    const d1 = pick(POOLS.hard), d2 = pick(POOLS.expert), nd = d1.length + d2.length;
     callResponse(d1, spread('nobashi', 'draw', d1, 0.06, 0.45, { n: nd }));
+    setBpm(132);
     callResponse(d2, spread('nobashi', 'draw', d2, 0.5, 0.92, { n: nd }));
   }
-  callResponse([0, 4], [{ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' }]);
+  callResponse(pick([[0, 2], [0, 3], [0, 6]]), [{ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' }]);
   rest('yaki');
+  // 太鼓を打つ時刻（小節ごとの拍）
+  const drumList = [];
+  for (let b = 0; b < bar; b++) for (let k = 0; k < 4; k++) drumList.push({ t: barStart[b] + k * barBeat[b], pos: k });
+  const barAt = t => { let b = 0; while (b < bar && barStart[b + 1] <= t) b++; return t < 0 ? -1 : b; };
   const pNotes = chart.filter(n => n.who === 'P');
 
   // 進行
   let mode = 'play';           // play | yaki | done
+  let bannerDur = 2.2;
   let curSec = 0, curView = -1, bannerT = 0, reheatUntil = -1, insertAt = -1;
   let t0 = 0, started = false;
   let masterFx = 0, masterX = CX, masterY = AY, hammerFx = null;
@@ -210,7 +227,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   function enterSection(id) {
     curSec = secIndex(id);
     const v = SECTIONS[curSec].view;
-    bannerT = v === curView ? 0 : id === 'yaki' ? 1.3 : BAR;
+    bannerT = v === curView ? 0 : id === 'yaki' ? 1.3 : bannerDur;
     curView = v;
     section && section(v);
     T = 1320;
@@ -669,7 +686,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   /* 番の表示：師匠の番（聴く）／あなたの番（返す）。タイミングは示さない */
   function drawTurn() {
     const now = songT();
-    const b = Math.floor(now / BAR);
+    const b = barAt(now);
     const turn = respBars.has(b) ? 'you' : callBars.has(b) ? 'master' : '';
     const uk = uiK(c, 1.8);
     g.save();
@@ -701,7 +718,8 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   function drawBanner() {
     const s = VIEW_SECTIONS[curView];
-    const dur = SECTIONS[curSec].id === 'yaki' ? 1.3 : BAR;
+    if (!s) return;
+    const dur = SECTIONS[curSec].id === 'yaki' ? 1.3 : bannerDur;
     const k = clamp(bannerT / dur, 0, 1);
     const a = k > 0.8 ? (1 - k) / 0.2 : k < 0.2 ? k / 0.2 : 1;
     g.save();
@@ -737,28 +755,29 @@ function stageKatana({ root, scope, state, finish, section }) {
 
     if (mode === 'play') {
       // BGM の太鼓を拍に合わせて予約（1拍目に強く、3拍目に弱く、2・4拍目は縁）
-      while (drumBeat * BEAT < now + 0.25) {
-        if (drumBeat * BEAT > now - 0.05 && audioOK()) Music.drumAt(audioAt(drumBeat * BEAT), drumBeat % 4);
+      while (drumBeat < drumList.length && drumList[drumBeat].t < now + 0.6) {
+        const d = drumList[drumBeat];
+        if (d.t > now - 0.05 && audioOK()) Music.drumAt(audioAt(d.t), d.pos);
         drumBeat++;
       }
       // 区切り・沸かし直し・心鉄入れ
       for (const ev of events) {
         if (ev.done || now < ev.t) continue;
         ev.done = true;
-        if (ev.kind === 'section') enterSection(ev.id);
-        else if (ev.kind === 'reheat') { reheatUntil = ev.t + BAR; Sound.whoosh(); scope.timeout(() => Sound.whoosh(), BEAT * 1000); }
+        if (ev.kind === 'section') { bannerDur = ev.dur; enterSection(ev.id); }
+        else if (ev.kind === 'reheat') { reheatUntil = ev.t + ev.dur; Sound.whoosh(); scope.timeout(() => Sound.whoosh(), ev.dur * 250); }
         else if (ev.kind === 'insert') { insertAt = ev.t; coreOff = (Math.random() < 0.5 ? -1 : 1) * (1 - avg(acc.tsukuri)) * 16; }
         else if (ev.kind === 'yaki') startYaki();
       }
       if (now < reheatUntil) { T = Math.min(1320, T + 420 * dt); Sound.fire(0.7); } else Sound.fire(0.12);
       if (insertAt >= 0 && coreIn < 1) {
-        coreIn = clamp((now - insertAt) / (BEAT * 1.5), 0, 1);
+        coreIn = clamp((now - insertAt) / 0.7, 0, 1);
         if (coreIn >= 1) Sound.thud();
       }
       // 師匠の小槌：少し先の音符を正確な時刻で鳴らし、絵は時刻が来たら動かす
       for (const n of chart) {
         if (n.who !== 'M') continue;
-        if (!n.scheduled && n.t - now < 0.25) {
+        if (!n.scheduled && n.t - now < 0.6) {
           n.scheduled = true;
           if (n.t > now - 0.05 && audioOK()) Sound.tickAt(audioAt(n.t));
         }
@@ -767,7 +786,7 @@ function stageKatana({ root, scope, state, finish, section }) {
           masterFx = 1; masterX = targetX(n.step); masterY = topY(n.step);
           parts.spark(masterX, masterY, 5, { T: T + 40, min: 60, max: 220, life: 0.5 });
         }
-        if (n.t > now + 0.3) break;
+        if (n.t > now + 0.7) break;
       }
       // 見逃し
       for (const n of pNotes) {

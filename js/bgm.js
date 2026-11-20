@@ -30,12 +30,11 @@ const Music = (() => {
   };
 
   function makeReverb() {
-    const len = Math.floor(ac.sampleRate * 3.4);
-    const buf = ac.createBuffer(2, len, ac.sampleRate);
-    for (let ch = 0; ch < 2; ch++) {
-      const d = buf.getChannelData(ch);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8);
-    }
+    // スマホでも途切れないよう、残響は短め（1.8秒）のモノラルにして計算量を抑える
+    const len = Math.floor(ac.sampleRate * 1.8);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
     const conv = ac.createConvolver();
     conv.buffer = buf;
     return conv;

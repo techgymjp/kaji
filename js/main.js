@@ -117,7 +117,19 @@ function runStage(i) {
     <h2>${s.title}</h2>
     <p class="yomi">${s.yomi}</p>
     <p class="body">${s.intro}</p>`;
-  const go = btn(L('始める', 'Begin'), 'primary big', () => start());
+  const go = btn(L('始める', 'Begin'), 'primary big', () => prepareAndStart());
+  /* 音とテクスチャの準備を済ませてから始める */
+  async function prepareAndStart() {
+    if (go.disabled) return;
+    go.disabled = true;
+    go.textContent = L('準備中…', 'Preparing…');
+    const t = performance.now();
+    await Sound.prepare();
+    if (Music.enabled) Music.start();
+    HeatTex.warm();
+    await new Promise(r => setTimeout(r, Math.max(0, 500 - (performance.now() - t))));
+    start();
+  }
   card.append(go);
   screen.append(card);
   go.focus();

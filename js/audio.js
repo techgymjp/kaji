@@ -59,8 +59,31 @@ const Sound = (() => {
     return [src, gn, f];
   }
 
+  /*
+   * ゲーム開始前の準備：音の仕組みを起動して再生可能にし、
+   * 全効果音を無音で一度鳴らして部品を用意しておく（最初の一打で途切れないように）
+   */
+  async function prepare() {
+    init();
+    if (!ac) return false;
+    if (ac.state !== 'running') {
+      try { await Promise.race([ac.resume(), new Promise(r => setTimeout(r, 1500))]); } catch (e) { /* 無視 */ }
+    }
+    const was = master.gain.value;
+    master.gain.value = 0;
+    try {
+      const api = Sound;
+      api.clang(1); api.clangPerfect(); api.thunk(); api.tick(); api.whoosh(); api.chisel(); api.thud();
+      noise(0.05, 'highpass', 2500, 0.5, 0.01);
+    } catch (e) { /* 無視 */ }
+    await new Promise(r => setTimeout(r, 250));
+    master.gain.value = enabled ? 0.7 : was;
+    return ac.state === 'running';
+  }
+
   return {
     init,
+    prepare,
     get ctx() { return ac; },
     get out() { return master; },
     get enabled() { return enabled; },
