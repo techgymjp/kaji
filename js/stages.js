@@ -51,175 +51,7 @@ function drawSmithy(g, W, H, light = 0.5, anvilX = 470) {
 }
 
 /* ============================================================
- * 一、玉鋼選び
- * ============================================================ */
-function drawOre(g, q, seed, W, H) {
-  const r = rng(seed);
-  g.clearRect(0, 0, W, H);
-  const cx = W / 2, cy = H / 2 + 4;
-  // ごつごつした塊の輪郭（ノイズ付きの滑らかな閉曲線）
-  const n = 28, pts = [];
-  const k1 = r() * TAU, k2 = r() * TAU, k3 = r() * TAU;
-  for (let i = 0; i < n; i++) {
-    const a = i / n * TAU;
-    const rad = W * 0.3 * (1 + 0.16 * Math.sin(a * 2 + k1) + 0.1 * Math.sin(a * 3 + k2) + 0.06 * Math.sin(a * 7 + k3) + (r() - 0.5) * 0.12);
-    pts.push([cx + Math.cos(a) * rad * 1.15, cy + Math.sin(a) * rad * 0.78]);
-  }
-  const path = new Path2D();
-  for (let i = 0; i < n; i++) {
-    const p0 = pts[i], p1 = pts[(i + 1) % n];
-    const m = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
-    if (i === 0) path.moveTo(m[0], m[1]);
-    else path.quadraticCurveTo(p0[0], p0[1], m[0], m[1]);
-  }
-  path.quadraticCurveTo(pts[0][0], pts[0][1], (pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2);
-  path.closePath();
-  // 影
-  g.save();
-  g.shadowColor = 'rgba(0,0,0,0.85)'; g.shadowBlur = 16; g.shadowOffsetY = 7;
-  g.fillStyle = '#1a1a1a'; g.fill(path);
-  g.restore();
-  g.save();
-  g.clip(path);
-  // 地の色：良質ほど銀白色、悪いものは黒ずんで褐色を帯びる
-  const b = 70 + q * 105;
-  const base = mixRGB([b * 0.95, b * 0.85, b * 0.75], [b, b * 1.02, b * 1.06], q);
-  g.fillStyle = rgbStr(base);
-  g.fillRect(0, 0, W, H);
-  // 結晶粒（破面のきらめき）：良質ほど細かく揃う
-  const cell = q > 0.8 ? 1.6 : q > 0.45 ? 2.6 : 3.8;
-  g.save();
-  g.filter = 'blur(0.5px)';
-  for (let y = 0; y < H; y += cell) {
-    for (let x = 0; x < W; x += cell) {
-      const lv = r();
-      const a = lv > 0.5 ? (lv - 0.5) * (0.25 + 0.5 * q) : (0.5 - lv) * 0.55;
-      g.fillStyle = lv > 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
-      g.fillRect(x + (r() - 0.5) * cell, y + (r() - 0.5) * cell, cell * (0.6 + r() * 0.8), cell * (0.6 + r() * 0.8));
-    }
-  }
-  g.restore();
-  // 立体感（左上から光）
-  const sh = g.createRadialGradient(cx - 22, cy - 18, 4, cx, cy, W * 0.42);
-  sh.addColorStop(0, `rgba(255,255,255,${0.18 + 0.15 * q})`);
-  sh.addColorStop(0.5, 'rgba(0,0,0,0)');
-  sh.addColorStop(1, 'rgba(0,0,0,0.6)');
-  g.fillStyle = sh;
-  g.fillRect(0, 0, W, H);
-  // 割れ面の稜線
-  g.lineWidth = 0.8;
-  for (let i = 0; i < 6; i++) {
-    const x0 = cx + (r() - 0.5) * 80, y0 = cy + (r() - 0.5) * 50;
-    g.strokeStyle = `rgba(255,255,255,${0.08 + 0.15 * q})`;
-    g.beginPath(); g.moveTo(x0, y0);
-    g.lineTo(x0 + (r() - 0.5) * 40, y0 + (r() - 0.5) * 30);
-    g.lineTo(x0 + (r() - 0.5) * 60, y0 + (r() - 0.5) * 40);
-    g.stroke();
-  }
-  // 輝点（細かな結晶面の反射）
-  const spk = Math.round(q * q * 34);
-  g.save();
-  g.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < spk; i++) {
-    const x = cx + (r() - 0.5) * W * 0.6, y = cy + (r() - 0.5) * H * 0.48;
-    const rad = 0.8 + r() * 2.2;
-    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
-    gr.addColorStop(0, `rgba(255,255,255,${0.35 + r() * 0.5})`);
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr;
-    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-  }
-  g.restore();
-  // 錆・ノロ（不純物）
-  const bad = Math.round((1 - q) * 14);
-  g.save();
-  g.filter = 'blur(1.2px)';
-  for (let i = 0; i < bad; i++) {
-    const x = cx + (r() - 0.5) * W * 0.62, y = cy + (r() - 0.5) * H * 0.5;
-    const rad = 3 + r() * 12 * (1 - q);
-    const rg = g.createRadialGradient(x, y, 0, x, y, rad);
-    rg.addColorStop(0, `rgba(${120 + r() * 40},${58 + r() * 20},24,0.7)`);
-    rg.addColorStop(1, 'rgba(100,48,20,0)');
-    g.fillStyle = rg;
-    g.beginPath(); g.arc(x, y, rad, 0, TAU); g.fill();
-  }
-  g.restore();
-  for (let i = 0; i < bad; i++) {                // ノロの気泡穴
-    if (r() > 0.7) continue;
-    const x = cx + (r() - 0.5) * W * 0.6, y = cy + (r() - 0.5) * H * 0.45;
-    const rad = 0.8 + r() * 3.2 * (1 - q);
-    g.fillStyle = 'rgba(6,5,5,0.9)';
-    g.beginPath(); g.ellipse(x, y, rad, rad * 0.8, 0, 0, TAU); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,0.15)'; g.lineWidth = 0.6;
-    g.beginPath(); g.arc(x, y, rad, 0.2, 1.6); g.stroke();
-  }
-  g.restore();
-  g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 1; g.stroke(path);
-}
-
-function stageSelect({ root, scope, state, finish }) {
-  const ui = stageLayout(root, 'たたら製鉄で生まれた<strong>玉鋼</strong>から、刀に使う良質な塊を<strong>5つ</strong>選べ。<br>破面が<strong>銀白色に輝き、きめが細かい</strong>ものほど良質。赤錆やノロ（不純物の黒い穴）が多いものは避けよ。');
-  const qs = [];
-  for (let i = 0; i < 4; i++) qs.push(rand(0.84, 1));
-  for (let i = 0; i < 4; i++) qs.push(rand(0.48, 0.72));
-  for (let i = 0; i < 4; i++) qs.push(rand(0.1, 0.38));
-  shuffle(qs);
-  const sel = new Set();
-  const grid = el('div', 'ore-grid');
-  const cards = [];
-  const confirm = btn('この5つで鍛える', 'primary', () => decide());
-  confirm.disabled = true;
-  const count = el('span', 'count', '選択 0 / 5');
-  qs.forEach((q, i) => {
-    const [c, g] = makeCanvas(170, 130, 'ore-canvas');
-    drawOre(g, q, 1000 + i * 37 + Math.floor(Math.random() * 1000), 170, 130);
-    const card = el('button', 'ore');
-    card.type = 'button';
-    card.append(c);
-    const tag = el('span', 'ore-tag', '');
-    card.append(tag);
-    card.addEventListener('click', () => {
-      if (sel.has(i)) sel.delete(i);
-      else if (sel.size < 5) sel.add(i);
-      else return;
-      Sound.thud();
-      card.classList.toggle('on', sel.has(i));
-      count.textContent = `選択 ${sel.size} / 5`;
-      confirm.disabled = sel.size !== 5;
-    });
-    cards.push({ card, tag });
-    grid.append(card);
-  });
-  ui.view.append(grid);
-  ui.controls.append(count, confirm);
-
-  let done = false;
-  function decide() {
-    if (done) return;
-    done = true;
-    const sorted = qs.slice().sort((a, b) => b - a);
-    const best = sorted.slice(0, 5).reduce((a, b) => a + b, 0);
-    const worst = sorted.slice(-5).reduce((a, b) => a + b, 0);
-    const sum = [...sel].reduce((a, i) => a + qs[i], 0);
-    const score = Math.round(clamp((sum - worst) / (best - worst), 0, 1) * 100);
-    cards.forEach(({ card, tag }, i) => {
-      const q = qs[i];
-      tag.textContent = q > 0.8 ? '上' : q > 0.45 ? '中' : '下';
-      tag.className = 'ore-tag show ' + (q > 0.8 ? 'hi' : q > 0.45 ? 'mid' : 'lo');
-      card.disabled = true;
-    });
-    state.material = score;
-    confirm.disabled = true;
-    scope.timeout(() => finish(score,
-      score >= 90 ? '見事な目利き。上質な玉鋼ばかりが揃った。' :
-      score >= 65 ? 'おおむね良い鋼を選べた。' :
-      score >= 40 ? '並の鋼が混じっている。鍛錬で不純物を叩き出さねば。' :
-      '質の悪い鋼が多い。先が思いやられる…'), 1800);
-  }
-}
-
-/* ============================================================
- * 二、積み沸かし・折り返し鍛錬
+ * 一、積み沸かし・折り返し鍛錬
  * ============================================================ */
 function stageForge({ root, scope, state, finish }) {
   const ui = stageLayout(root,
@@ -231,7 +63,7 @@ function stageForge({ root, scope, state, finish }) {
   const parts = makeParticles();
 
   const MIN_FOLDS = 8, MAX_FOLDS = 15;
-  let purity = 0.32 + (state.material || 50) / 100 * 0.25;
+  let purity = 0.44;
   let carbon = 1.18 + Math.random() * 0.06;
   let folds = 0;
   let T = 760;
@@ -487,7 +319,7 @@ function stageForge({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 三、造り込み（皮鉄と心鉄の組み合わせ・沸かし付け）
+ * 二、造り込み（皮鉄と心鉄の組み合わせ・沸かし付け）
  * ============================================================ */
 const TSUKURI_METHODS = {
   kobuse: {
@@ -908,7 +740,7 @@ function stageTsukuri({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 四、素延べ・火造り
+ * 三、素延べ・火造り
  * ============================================================ */
 function stageShape({ root, scope, state, finish }) {
   const ui = stageLayout(root,
@@ -1087,7 +919,7 @@ function stageShape({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 五、土置き
+ * 四、土置き
  * ============================================================ */
 const HAMON_N = 120;
 const HAMON_PRESETS = {
@@ -1268,7 +1100,7 @@ function stageClay({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 六、焼入れ
+ * 五、焼入れ
  * ============================================================ */
 function stageQuench({ root, scope, state, finish }) {
   const TARGET = 790;
@@ -1386,7 +1218,7 @@ function stageQuench({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 七、研ぎ
+ * 六、研ぎ
  * ============================================================ */
 function stagePolish({ root, scope, state, finish }) {
   const STONES = [
@@ -1537,7 +1369,7 @@ function stagePolish({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 八、銘切り
+ * 七、銘切り
  * ============================================================ */
 function stageMei({ root, scope, state, finish }) {
   const ui = stageLayout(root, '最後に、茎（なかご）へ<strong>鏨（たがね）で銘を切る</strong>。刀工としての名と、この刀に与える号を記せ。');
@@ -1591,20 +1423,18 @@ function stageMei({ root, scope, state, finish }) {
 }
 
 const STAGES = [
-  { id: 'select', no: '一', title: '玉鋼選び', yomi: 'たまはがねえらび', run: stageSelect,
-    intro: '日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。刀匠はまず玉鋼を割り、その破面を見て炭素量や不純物の少ない良質な部分を選び分ける。' },
-  { id: 'forge', no: '二', title: '積み沸かし・折り返し鍛錬', yomi: 'つみわかし・おりかえしたんれん', run: stageForge,
-    intro: '選んだ玉鋼を積み重ねて火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。' },
-  { id: 'tsukuri', no: '三', title: '造り込み', yomi: 'つくりこみ', run: stageTsukuri,
+  { id: 'forge', no: '一', title: '積み沸かし・折り返し鍛錬', yomi: 'つみわかし・おりかえしたんれん', run: stageForge,
+    intro: '日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。この玉鋼を小さく割って積み重ね、火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。' },
+  { id: 'tsukuri', no: '二', title: '造り込み', yomi: 'つくりこみ', run: stageTsukuri,
     intro: '鍛えた硬い<strong>皮鉄</strong>と、炭素の少ない柔らかい<strong>心鉄</strong>を組み合わせる。甲伏せ・本三枚などの方法があり、皮鉄で心鉄を包んで<strong>沸かし付け</strong>、一本の鋼にする。「折れず、曲がらず、よく切れる」日本刀の秘密はこの組み合わせにある。' },
-  { id: 'shape', no: '四', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
+  { id: 'shape', no: '三', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
     intro: '造り込んだ鋼を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。' },
-  { id: 'clay', no: '五', title: '土置き', yomi: 'つちおき', run: stageClay,
+  { id: 'clay', no: '四', title: '土置き', yomi: 'つちおき', run: stageClay,
     intro: '粘土・炭の粉・砥石の粉を混ぜた<strong>焼刃土</strong>を刀身に塗る。刃側は薄く、棟側は厚く置くことで、焼入れの冷え方に差が生まれ、硬い刃と粘り強い地、そして<strong>刃文</strong>が生まれる。' },
-  { id: 'quench', no: '六', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
+  { id: 'quench', no: '五', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
     intro: '刀鍛冶の最も緊張する瞬間。火の色を見極めるため鍛冶場を暗くし、刀身を均一に熱して一気に水へ入れる。急冷で刃が硬化し、日本刀特有の<strong>反り</strong>が生まれる。' },
-  { id: 'polish', no: '七', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
+  { id: 'polish', no: '六', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
     intro: '鍛冶押しを終えた刀は<strong>研師</strong>の手に渡る。荒砥から仕上砥まで十数種の砥石を使い分け、刀の姿を整え、地鉄の肌と刃文の美しさを引き出していく。' },
-  { id: 'mei', no: '八', title: '銘切り', yomi: 'めいきり', run: stageMei,
+  { id: 'mei', no: '七', title: '銘切り', yomi: 'めいきり', run: stageMei,
     intro: '茎に鑢目をかけ、<strong>鏨</strong>で刀工の名（銘）と年紀を刻む。銘は刀匠がその出来に責任を持つ証である。' }
 ];

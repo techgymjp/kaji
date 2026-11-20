@@ -109,18 +109,6 @@ kbd { font-family: inherit; font-size: .85em; border: 1px solid var(--line); bor
 .ref-swatch { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .ref-swatch i { width: 36px; height: 20px; border-radius: 3px; display: inline-block; }
 
-/* 玉鋼 */
-.ore-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-@media (max-width: 640px) { .ore-grid { grid-template-columns: repeat(3, 1fr); } }
-.ore { position: relative; padding: 0; border: 2px solid var(--line); border-radius: 8px; background: #120d0a; cursor: pointer; transition: border-color .15s, transform .1s; }
-.ore:hover:not(:disabled) { border-color: #8a6a3a; }
-.ore.on { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(210, 174, 99, .35), 0 0 18px rgba(210, 174, 99, .25); transform: translateY(-2px); }
-.ore canvas { width: 100%; display: block; }
-.ore-tag { position: absolute; top: 6px; right: 8px; font-size: 18px; font-weight: 800; opacity: 0; transition: opacity .4s; }
-.ore-tag.show { opacity: 1; }
-.ore-tag.hi { color: #ffd77a; } .ore-tag.mid { color: #c9c0b0; } .ore-tag.lo { color: #d26a5a; }
-.ore.on::after { content: '選'; position: absolute; top: 6px; left: 8px; color: var(--gold); font-weight: 800; }
-
 /* 造り込み */
 .method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 @media (max-width: 720px) { .method-grid { grid-template-columns: 1fr; } }

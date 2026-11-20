@@ -221,20 +221,40 @@ const Sword = (() => {
       ctx.fill(blade);
     }
 
-    // ---- 地肌（板目肌）。折り返し回数が多いほど細かく詰む
+    // ---- 地肌。折り返し回数が多いほど細かく詰む。
+    //   柾目：同じ向きに折り返す → 長く真っ直ぐな肌目
+    //   板目：縦横交互に折り返す → 木の板のような流れる肌目
+    //   杢目：不規則に折り返す → 年輪のような渦を巻く肌目
     {
       const folds = o.folds ?? 12;
+      const grain = o.grain || 'itame';
       const n = 30 + folds * 9;
       const fine = clamp(folds / 15, 0.2, 1);
       ctx.lineWidth = 0.55;
+      const stroke = light => { ctx.strokeStyle = light ? `rgba(230,236,245,${0.05 + 0.09 * p})` : `rgba(5,8,14,${0.10 + 0.12 * p})`; };
       for (let k = 0; k < n; k++) {
         const v0 = 0.08 + r() * 0.9;
-        const t0 = r() * 0.95, len = 0.04 + r() * 0.22 * (1.2 - fine);
-        const amp = (0.004 + r() * 0.016) * (1.4 - fine);
-        const fq = 30 + r() * 80, ph = r() * TAU;
         const light = r() > 0.5;
-        ctx.strokeStyle = light ? `rgba(230,236,245,${0.05 + 0.09 * p})` : `rgba(5,8,14,${0.10 + 0.12 * p})`;
-        ctx.stroke(line(G, t0, Math.min(1, t0 + len), t => v0 + amp * Math.sin(t * fq + ph), 30));
+        stroke(light);
+        if (grain === 'masame') {
+          const t0 = r() * 0.9, len = 0.15 + r() * 0.5 * (1.2 - fine);
+          const amp = 0.002 + r() * 0.004;
+          ctx.stroke(line(G, t0, Math.min(1, t0 + len), t => v0 + amp * Math.sin(t * 12 + k), 40));
+        } else if (grain === 'mokume' && r() < 0.45) {
+          const t0 = r() * 0.92, rad = (0.008 + r() * 0.02) * (1.3 - fine * 0.5);
+          const c = G.P(t0, v0);
+          const wr = G.w(t0);
+          for (let ring = 1; ring <= 3; ring++) {
+            ctx.beginPath();
+            ctx.ellipse(c[0], c[1], rad * ring * G.L * 0.5, rad * ring * wr * 0.9, 0, 0, TAU);
+            ctx.stroke();
+          }
+        } else {
+          const t0 = r() * 0.95, len = 0.04 + r() * 0.22 * (1.2 - fine);
+          const amp = (0.004 + r() * 0.016) * (1.4 - fine);
+          const fq = 30 + r() * 80, ph = r() * TAU;
+          ctx.stroke(line(G, t0, Math.min(1, t0 + len), t => v0 + amp * Math.sin(t * fq + ph), 30));
+        }
       }
     }
 

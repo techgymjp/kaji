@@ -41,7 +41,7 @@ function showTitle() {
   wrap.innerHTML = `
     <p class="kicker">日本刀づくり</p>
     <h1 class="logo"><span>刀</span><span>鍛</span><span>冶</span></h1>
-    <p class="lead">玉鋼を選び、鍛え、焼き、研ぐ。<br>刀匠の八つの工程をたどり、世界に一振りの日本刀を打て。</p>`;
+    <p class="lead">玉鋼を鍛え、組み、焼き、研ぐ。<br>刀匠の七つの工程をたどり、世界に一振りの日本刀を打て。</p>`;
   wrap.append(c);
   const menu = el('div', 'menu');
   menu.append(
@@ -175,9 +175,9 @@ const RANKS = [
 
 function computeResult(st) {
   const sc = st.scores;
-  const m = sc.select ?? 50, f = sc.forge ?? 50, k = sc.tsukuri ?? 50, s = sc.shape ?? 50, h = sc.clay ?? 50, q = sc.quench ?? 50, p = sc.polish ?? 50;
-  let sharp = 0.2 * m + 0.25 * f + 0.1 * k + 0.3 * q + 0.15 * p;
-  let tough = (0.2 * m + 0.25 * f + 0.3 * k + 0.15 * s + 0.1 * q) * (st.methodTough ?? 1);
+  const f = sc.forge ?? 50, k = sc.tsukuri ?? 50, s = sc.shape ?? 50, h = sc.clay ?? 50, q = sc.quench ?? 50, p = sc.polish ?? 50;
+  let sharp = 0.35 * f + 0.1 * k + 0.35 * q + 0.2 * p;
+  let tough = (0.35 * f + 0.35 * k + 0.2 * s + 0.1 * q) * (st.methodTough ?? 1);
   let beauty = 0.3 * h + 0.35 * p + 0.15 * s + 0.2 * q;
   if (st.crack) { tough *= 0.35; sharp *= 0.7; beauty *= 0.75; }
   const total = Math.round((sharp + tough + beauty) / 3);
@@ -188,7 +188,7 @@ function computeResult(st) {
 
 function appraiserWords(st, r) {
   const sc = st.scores;
-  const names = { select: '玉鋼の見極め', forge: '鍛錬', tsukuri: '造り込み', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
+  const names = { forge: '鍛錬', tsukuri: '造り込み', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
   const ent = Object.entries(sc).filter(([k]) => names[k]);
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
@@ -256,7 +256,7 @@ function showAppraisal() {
   const detail = el('dl', 'detail');
   const sc = state.scores;
   detail.innerHTML = `
-    <dt>玉鋼</dt><dd>${sc.select}</dd><dt>鍛錬</dt><dd>${sc.forge}（${state.folds}回・${(2 ** state.folds).toLocaleString()}層）</dd>
+    <dt>鍛錬</dt><dd>${sc.forge}（${state.folds}回・${(2 ** state.folds).toLocaleString()}層）</dd>
     <dt>造り込み</dt><dd>${sc.tsukuri}（${state.methodName}）</dd><dt>火造り</dt><dd>${sc.shape}</dd><dt>土置き</dt><dd>${sc.clay}（${state.hamonName}）</dd>
     <dt>焼入れ</dt><dd>${sc.quench}（約${state.quenchT}℃）</dd><dt>研ぎ</dt><dd>${sc.polish}</dd>`;
   stats.append(detail);
