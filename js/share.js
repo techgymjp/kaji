@@ -6,6 +6,10 @@ const Share = (() => {
   const gameUrl = () => SHARE_URL;
 
   function text(rec) {
+    const redo = rec.redo ? L(`（焼き直し${rec.redo}回）`, ` (re-quenched ×${rec.redo})`) : '';
+    return redo ? baseText(rec).replace(/\n#/, redo + '\n#') : baseText(rec);
+  }
+  function baseText(rec) {
     return EN
       ? `I forged a katana in Katana Kaji!\n“${term(rec.name)}” — ${term(rec.rank)} (Total ${rec.total})\nSharpness ${rec.sharp} · Toughness ${rec.tough} · Beauty ${rec.beauty}\n#KatanaKaji #katana`
       : `刀鍛冶で日本刀を一振り打った！\n号「${rec.name}」　${rec.rank}（総合${rec.total}）\n切れ味${rec.sharp}・強靭さ${rec.tough}・美しさ${rec.beauty}\n#刀鍛冶 #日本刀づくり`;
@@ -77,6 +81,19 @@ const Share = (() => {
     let cardCanvas = null;
     const getCard = () => (cardCanvas ||= card(rec, swordOpt));
 
+    // アプリ（Android）では端末の共有メニューを使う
+    const capShare = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.Share;
+    if (capShare) {
+      row.append(btn(L('シェアする', 'Share'), 'primary share-native', () => {
+        capShare.share({ title: L('刀鍛冶 ― 日本刀づくり', 'Katana Kaji'), text: msg, url, dialogTitle: L('この一振りを披露する', 'Share your sword') }).catch(() => {});
+      }));
+      row.append(btn(L('文章をコピー', 'Copy Text'), '', async () => {
+        try { await navigator.clipboard.writeText(msg + '\n' + url); toast(L('コピーしました', 'Copied')); }
+        catch (e) { toast(L('コピーできませんでした', 'Could not copy')); }
+      }));
+      box.append(row);
+      return box;
+    }
     if (navigator.share) {
       row.append(btn(L('シェアする', 'Share'), 'primary share-native', async () => {
         try {

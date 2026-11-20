@@ -1,0 +1,8 @@
+{
+  "appId": "jp.techgym.kaji",
+  "appName": "刀鍛冶",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0d0a08"
+  }
+}

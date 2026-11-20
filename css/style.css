@@ -265,3 +265,17 @@ a.btn { text-decoration: none; display: inline-block; }
   .stat span, .meter span { font-size: 13px; }
   .stat b { font-size: 20px; }
 }
+
+/* 焼き直し（リワード広告）の案内 */
+.redo-offer { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); width: min(340px, 90%); background: rgba(20, 14, 10, .94); border: 1px solid var(--gold); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; text-align: center; z-index: 5; animation: fade .3s; }
+.redo-offer p { margin: 0; font-size: 17px; color: #ffb39a; }
+.redo-timer { display: block; height: 4px; background: var(--gold); border-radius: 2px; animation: redoTimer 6s linear forwards; }
+@keyframes redoTimer { from { width: 100%; } to { width: 0; } }
+
+/* 一時停止 */
+.pause-card h2 { font-size: 34px; margin: 0 0 16px; letter-spacing: .2em; }
+.pause-card .menu { flex-direction: column; align-items: center; }
+
+/* タイトル画面の下：版・プライバシーポリシー・広告の設定 */
+.app-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; color: var(--muted); font-size: 13px; margin: 6px 0 70px; }
+.app-foot a, .app-foot button { color: var(--muted); font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }

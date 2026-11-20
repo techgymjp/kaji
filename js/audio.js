@@ -84,6 +84,9 @@ const Sound = (() => {
   return {
     init,
     prepare,
+    /* 広告の表示中・一時停止中は音を止める */
+    suspend() { if (ac && ac.state === 'running') ac.suspend().catch(() => {}); },
+    resume() { if (ac && ac.state !== 'running' && !document.hidden) ac.resume().catch(() => {}); },
     get ctx() { return ac; },
     get out() { return master; },
     get enabled() { return enabled; },

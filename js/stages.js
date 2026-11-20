@@ -100,9 +100,9 @@ function stageKatana({ root, scope, state, finish, section }) {
   if (portrait) {
     const top = ui.view.getBoundingClientRect().top;
     const cssW = window.innerWidth;
-    const avail = window.innerHeight - top - 64;           // 下の状態表示ぶんを残す
+    const avail = window.innerHeight - top - 76;           // 下の状態表示ぶんを残す（背の低い画面でも切れないように）
     VW = 430;
-    VH = Math.round(VW * clamp(avail / cssW, 0.9, 1.75));
+    VH = Math.round(VW * clamp(avail / cssW, 0.6, 1.75));
   }
   const [c, g] = makeCanvas(VW, VH, 'stage-canvas', 1.5);
   c.style.touchAction = 'none';
@@ -233,7 +233,8 @@ function stageKatana({ root, scope, state, finish, section }) {
     Music.groove();
   }
   begin();
-  if (/[?&]debug\b/.test(location.search)) window.__katana = { pNotes, songT, BEAT };
+  let forceCrack = false;
+  if (/[?&]debug\b/.test(location.search)) window.__katana = { pNotes, songT, BEAT, forceCrack: () => { forceCrack = true; } }; // @web-only
 
   function enterSection(id) {
     curSec = secIndex(id);
@@ -273,7 +274,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   }
 
   function strike() {
-    if (mode !== 'play' || !started) return;
+    if (mode !== 'play' || !started || paused) return;
     // 短すぎる振動は多くの Android 端末で感じられないため、45ms にする
     if (navigator.vibrate) { try { navigator.vibrate(45); } catch (e) { /* 対応していない端末 */ } }
     Sound.init();
@@ -395,10 +396,44 @@ function stageKatana({ root, scope, state, finish, section }) {
     }
   }
 
+  /* リワード：焼割れの焼き直し（1振り1回）。広告を最後まで見たときだけ焼入れをやり直す */
+  const REDO_MAX = 1;
+  let redoCount = 0;
+  function offerRedo() {
+    mode = 'offer';
+    scope.timeout(() => {
+      const box = el('div', 'redo-offer');
+      box.innerHTML = `<p>${L('刃に焼割れが入った…', 'A crack ran through the edge…')}</p>`;
+      const yes = btn(L('広告を見て焼き直す', 'Watch an ad to re-quench'), 'primary');
+      const no = btn(L('このまま鑑定へ', 'Go to appraisal'), '');
+      const bar = el('i', 'redo-timer');
+      box.append(yes, no, bar);
+      ui.view.append(box);
+      let done = false;
+      const close = () => { done = true; box.remove(); };
+      const auto = setTimeout(() => { if (!done) { close(); end(); } }, 6000);
+      no.addEventListener('click', () => { clearTimeout(auto); close(); end(); });
+      yes.addEventListener('click', async () => {
+        clearTimeout(auto);
+        yes.disabled = no.disabled = true;
+        const r = await Ads.showRewarded();
+        close();
+        if (r === 'rewarded') {
+          redoCount++;
+          // 同じ出来のまま、焼入れだけをやり直す（割れるかどうかは改めて決まる）
+          const rr = rng((state.seed || 1) + redoCount * 7919);
+          yk.crack = rr() < (1 - yk.accAll) * 0.15;
+          Object.assign(yk, { t: 0.9, sizzled: false, crackSounded: false });
+          mode = 'yaki';
+        } else end();
+      });
+    }, 900);
+  }
+
   function startYaki() {
     const accAll = avg([...acc.kawa, ...acc.shin, ...acc.tsukuri, ...acc.nobashi]);
     const qq = clamp(0.5 + 0.5 * accAll + rand(-0.08, 0.08), 0, 1);
-    const crack = Math.random() < (1 - accAll) * 0.15;
+    const crack = forceCrack || Math.random() < (1 - accAll) * 0.15;
     const quenchT = Math.round(790 + (1 - qq) * (Math.random() < 0.5 ? -1 : 1) * 90);
     const hamonName = accAll >= 0.85 ? '丁子' : accAll >= 0.7 ? '互の目' : accAll >= 0.55 ? '湾れ' : '直刃';
     const f = HAMON_PRESETS[hamonName];
@@ -439,7 +474,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       hamon: yk.hamon, hamonName: yk.hamonName, marks: yk.marks,
       hamonStrength: yk.qq >= 0.6 ? 1 : lerp(0.3, 1, yk.qq / 0.6),
       polish: Math.round(70 + 30 * yk.accAll), scratches: 0,
-      sori: yk.sori, crack: yk.crack, quenchT: yk.quenchT
+      sori: yk.sori, crack: yk.crack, quenchT: yk.quenchT, redo: redoCount
     });
     state.grainName = state.grain === 'itame' ? '板目肌' : '杢目肌';
     finish(null, '');
@@ -591,7 +626,14 @@ function stageKatana({ root, scope, state, finish, section }) {
       }
       if (k > 0.25 && k < 2 && Math.random() < dt * 40) parts.steam(430, 310, 3, 330);
     }
-    Sword.draw(g, { x: 130, y, length: 640, width: 52, sori, nakago: true, habaki: false, polish: 0.2, folds: 8, seed: 7, hamon: yk.hamon, heat, clay, shadow: false, bg: '#050302' });
+    const cracked = yk.crack && t > 3.2;
+    Sword.draw(g, { x: 130, y, length: 640, width: 52, sori, nakago: true, habaki: false, polish: 0.2, folds: 8, seed: 7, hamon: yk.hamon, heat, clay, shadow: false, bg: '#050302', crack: cracked });
+    if (cracked && !yk.crackSounded) { yk.crackSounded = true; Sound.crack(); }
+    if (cracked && t > 3.4) {
+      g.font = `bold ${fs(c, 34, 1.5)}px "Shippori Mincho", serif`; g.textAlign = 'center';
+      g.fillStyle = `rgba(255,120,95,${clamp((t - 3.4) * 3, 0, 1)})`;
+      g.fillText(L('焼割れ…', 'Quench crack…'), 430, 120);
+    }
     if (t < 0) { /* 題目の表示中 */ } else if (t < 0.9) label(L('土置き', 'Applying clay'), 430, 120);
     else if (t < 2.4) label(L('月の出の色まで赤める…', 'Heating to the “rising-moon” glow…'), 430, 120);
     else if (t < 3.6) {
@@ -753,6 +795,26 @@ function stageKatana({ root, scope, state, finish, section }) {
     g.restore();
   }
 
+  /* 一時停止（戻るボタン・アプリの切り替え・ブラウザのタブ切り替え）。
+     ゲームの時計は再開時に止めていた時間だけずらし、音も止める */
+  let paused = false, pausedAt = 0;
+  window.KatanaCtl = {
+    get active() { return started && (mode === 'play' || mode === 'yaki'); },
+    get paused() { return paused; },
+    pause() {
+      if (paused || !this.active) return false;
+      paused = true; pausedAt = pnow();
+      Sound.suspend();
+      return true;
+    },
+    resume() {
+      if (!paused) return;
+      t0 += pnow() - pausedAt;
+      paused = false;
+      Sound.resume();
+    }
+  };
+
   // ---------- ループ（万一の例外でも止まらない）
   scope.loop(dt => {
     try { frame(dt); } catch (e) {
@@ -762,6 +824,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     }
   });
   function frame(dt) {
+    if (paused) return;                                  // 一時停止中は止めたまま（最後の絵を残す）
     time += dt;
     msgT -= dt;
     bannerT -= dt;
@@ -823,7 +886,11 @@ function stageKatana({ root, scope, state, finish, section }) {
       }
     } else if (mode === 'yaki') {
       yk.t += dt;
-      if (yk.t > 4.6) end();
+      if (yk.t > 4.6) {
+        // 焼割れのとき（アプリだけ）：割れを見届けてから「広告を見て焼き直す」を少しだけ出す
+        if (yk.crack && redoCount < REDO_MAX && window.Ads && Ads.canReward) offerRedo();
+        else end();
+      }
     }
 
     updateCam(dt);

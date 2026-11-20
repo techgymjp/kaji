@@ -7,8 +7,22 @@ const KURA_KEY = 'kaji.kura.v1';
 
 let state = null;
 let scope = null;
+let current = 'title';         // title | howto | intro | play | result | kura
+
+/* ---------- アプリ（Android）の機能。Web 版では何もしない ---------- */
+const NATIVE = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+const NOOP_ADS = { available: false, canReward: false, privacyOptionsRequired: false, initDone: Promise.resolve(),
+  setBanner() {}, async showInterstitial() {}, async showRewarded() { return 'unavailable'; }, showPrivacyOptions() {} };
+const ads = () => window.Ads || NOOP_ADS;
+/* 全画面広告を出してから（閉じられてから）次へ進む */
+async function withAd(next) {
+  await ads().showInterstitial(1500);
+  next();
+}
 
 function clearScreen() {
+  window.KatanaCtl = null;
+  closePause();
   if (scope) { scope.dispose(); scope = null; }
   Sound.stopLoops();
   screen.innerHTML = '';
@@ -34,6 +48,8 @@ function renderHud(active) {
 /* ---------------- タイトル ---------------- */
 function showTitle() {
   clearScreen();
+  current = 'title';
+  ads().setBanner(true);
   Music.setMood('calm');
   renderHud(-1);
   scope = makeScope();
@@ -47,11 +63,26 @@ function showTitle() {
   wrap.append(c);
   const menu = el('div', 'menu');
   menu.append(
-    btn(L('鍛刀を始める', 'Start Forging'), 'primary big', () => newGame()),
+    btn(L('鍛刀を始める', 'Start Forging'), 'primary big', () => withAd(newGame)),
     btn(L(`蔵を見る（${loadKura().length}）`, `Collection (${loadKura().length})`), '', () => showKura()),
     btn(L('遊び方', 'How to Play'), '', () => showHowto())
   );
   wrap.append(menu);
+  // 版・プライバシーポリシー・広告の設定（同意が必要な地域だけ）
+  const foot = el('div', 'app-foot');
+  if (NATIVE) foot.append(el('span', '', window.APP_VERSION || ''));
+  const pp = el('a', '', L('プライバシーポリシー', 'Privacy Policy'));
+  pp.href = L('https://techgym.jp/privacy-policy/', 'https://techgym.jp/privacy-policy-en/');
+  pp.target = '_blank'; pp.rel = 'noopener';
+  foot.append(pp);
+  ads().initDone.then(() => {
+    if (!ads().privacyOptionsRequired || !foot.isConnected) return;
+    const b = el('button', '', L('広告の設定', 'Ad settings'));
+    b.type = 'button';
+    b.addEventListener('click', () => ads().showPrivacyOptions());
+    foot.append(b);
+  });
+  wrap.append(foot);
   screen.append(wrap);
   // 刀身に光が流れる演出
   const hamon = Array.from({ length: HAMON_N }, (_, i) => HAMON_PRESETS['互の目'](i / (HAMON_N - 1)));
@@ -81,6 +112,8 @@ function showTitle() {
 /* ---------------- 遊び方 ---------------- */
 function showHowto() {
   clearScreen();
+  current = 'howto';
+  ads().setBanner(true);
   Music.setMood('calm');
   const wrap = el('section', 'page howto-page');
   wrap.append(el('h2', '', L('遊び方', 'How to Play')));
@@ -89,7 +122,9 @@ function showHowto() {
   const list = el('ol', 'howto');
   VIEW_SECTIONS.forEach(s => list.append(el('li', '', `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p>`)));
   wrap.append(list);
-  wrap.append(btn(L('戻る', 'Back'), 'big', () => showTitle()));
+  const hm = el('div', 'menu');
+  hm.append(btn(L('鍛刀を始める', 'Start Forging'), 'primary big', () => withAd(newGame)), btn(L('戻る', 'Back'), 'big', () => withAd(showTitle)));
+  wrap.append(hm);
   screen.append(wrap);
 }
 
@@ -108,6 +143,8 @@ function newGame() {
 const STAGE_MOOD = { katana: 'forge' };
 function runStage(i) {
   clearScreen();
+  current = 'intro';
+  ads().setBanner(false);
   Music.setMood(STAGE_MOOD[STAGES[i].id] || 'calm');
   renderHud(0);
   const s = STAGES[i];
@@ -136,6 +173,8 @@ function runStage(i) {
 
   function start() {
     clearScreen();
+    current = 'play';
+    ads().setBanner(false);
     renderHud(0);
     const root = el('section', 'stage');
     screen.append(root);
@@ -291,6 +330,8 @@ function markPanel(rec) {
 
 function showAppraisal() {
   clearScreen();
+  current = 'result';
+  ads().setBanner(true);
   Music.setMood('finale');
   renderHud(VIEW_SECTIONS.length);
   const r = computeResult(state);
@@ -301,7 +342,7 @@ function showAppraisal() {
     sharp: r.sharp, tough: r.tough, beauty: r.beauty,
     hamon: state.hamon, hamonName: state.hamonName, hamonStrength: state.hamonStrength,
     folds: state.folds, jiFolds: state.jiFolds, marks: state.marks, grain: state.grain, grainName: state.grainName, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
-    sori: state.sori, seed: state.seed, quenchT: state.quenchT, carbon: state.carbon,
+    sori: state.sori, seed: state.seed, quenchT: state.quenchT, carbon: state.carbon, redo: state.redo || 0,
     scores: state.scores
   };
   const list = loadKura();
@@ -345,7 +386,7 @@ function showAppraisal() {
     <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}</dd>
     <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${sc.nobashi}</dd>
     <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd>
-    <dt>${L('刃文', 'Hamon')}</dt><dd>${term(state.hamonName)}</dd>`;
+    <dt>${L('刃文', 'Hamon')}</dt><dd>${term(state.hamonName)}</dd>${state.redo ? `<dt>${L('焼き直し', 'Re-quench')}</dt><dd>${L(state.redo + '回', '×' + state.redo)}</dd>` : ''}`;
   stats.append(detail);
   body.append(seal, stats);
   wrap.append(body);
@@ -375,7 +416,7 @@ function showAppraisal() {
   wrap.append(naming);
   wrap.append(shareBox);
   const menu = el('div', 'menu');
-  menu.append(btn(L('もう一振り打つ', 'Forge Another'), 'primary', () => newGame()), btn(L('蔵を見る', 'Collection'), '', () => showKura()), btn(L('タイトルへ', 'Title'), '', () => showTitle()));
+  menu.append(btn(L('もう一振り打つ', 'Forge Another'), 'primary', () => withAd(newGame)), btn(L('蔵を見る', 'Collection'), '', () => showKura()), btn(L('タイトルへ', 'Title'), '', () => withAd(showTitle)));
   wrap.append(menu);
   screen.append(wrap);
   Sound.gong();
@@ -384,6 +425,8 @@ function showAppraisal() {
 /* ---------------- 蔵 ---------------- */
 function showKura() {
   clearScreen();
+  current = 'kura';
+  ads().setBanner(false);
   Music.setMood('calm');
   renderHud(-1);
   const wrap = el('section', 'page');
@@ -421,10 +464,52 @@ document.getElementById('sound').addEventListener('click', e => {
   e.currentTarget.textContent = on ? L('音：入', 'SFX: On') : L('音：切', 'SFX: Off');
 });
 document.getElementById('home').addEventListener('click', () => {
-  if (state && !confirm(L('作刀を中断してタイトルに戻りますか？', 'Abandon this sword and return to the title?'))) return;
+  if (current === 'play' && window.KatanaCtl && window.KatanaCtl.active) { pauseGame(); return; }
+  if (current === 'play' && !confirm(L('作刀を中断してタイトルに戻りますか？', 'Abandon this sword and return to the title?'))) return;
   state = null;
   showTitle();
 });
+
+/* ---------- 一時停止 ---------- */
+let pauseEl = null;
+function closePause() { if (pauseEl) { pauseEl.remove(); pauseEl = null; } }
+function pauseGame() {
+  const k = window.KatanaCtl;
+  if (!k || pauseEl || !(k.paused || k.pause())) return;
+  ads().setBanner(true);
+  pauseEl = el('div', 'overlay');
+  const card = el('div', 'result-card pause-card');
+  card.append(el('h2', '', L('一時停止', 'Paused')));
+  const m = el('div', 'menu');
+  m.append(
+    btn(L('再開', 'Resume'), 'primary big', () => withAd(() => {
+      closePause();
+      ads().setBanner(false);
+      if (window.KatanaCtl) window.KatanaCtl.resume();
+    })),
+    btn(L('タイトルへ', 'Title'), '', () => withAd(() => { state = null; showTitle(); }))
+  );
+  card.append(m);
+  pauseEl.append(card);
+  document.body.append(pauseEl);
+}
+// 別のアプリやタブに切り替えたら、作刀中は自動で一時停止する
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (current === 'play' && window.KatanaCtl && window.KatanaCtl.active) pauseGame();
+    Sound.suspend();
+  } else if (!pauseEl) Sound.resume();
+});
+// Android の戻るボタン：作刀中は一時停止（一時停止中なら再開と同じ）、タイトルではアプリを終了、ほかの画面はタイトルへ
+if (NATIVE && Capacitor.Plugins && Capacitor.Plugins.App) {
+  Capacitor.Plugins.App.addListener('backButton', () => {
+    if (pauseEl) { pauseEl.querySelector('.btn.primary').click(); return; }
+    if (current === 'play' && window.KatanaCtl && window.KatanaCtl.active) { pauseGame(); return; }
+    if (current === 'title') { Capacitor.Plugins.App.exitApp(); return; }
+    if (current === 'howto' || current === 'result') withAd(showTitle);
+    else { state = null; showTitle(); }
+  });
+}
 document.getElementById('sound').textContent = L('音：入', 'SFX: On');
 document.getElementById('home').textContent = L('刀鍛冶', 'Katana Kaji');
 const langBtn = document.getElementById('lang');

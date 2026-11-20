@@ -43,3 +43,23 @@ English is supported: use the language button at the top right, or open the page
 ```bash
 python3 -m http.server 8000
 ```
+
+## Android アプリ
+
+[Capacitor](https://capacitorjs.com/) でゲームのファイルをアプリに同梱しています（オフラインで遊べます）。パッケージ名は `jp.techgym.kaji`。
+
+- 動作確認用 APK（デバッグ署名・テスト広告）：リリース画面 https://github.com/techgymjp/kaji/releases/tag/android-latest
+- APK を直接ダウンロード：https://github.com/techgymjp/kaji/releases/latest/download/kaji.apk
+
+![リリース画面の QR コード](docs/apk-qr.png)
+
+- ビルドは GitHub Actions（`.github/workflows/android.yml`）。`main` へ push するたびに APK を作り、Release `android-latest` の APK を差し替える
+- GitHub Secrets（`ANDROID_KEYSTORE_BASE64` など 4 つ）があれば、本番広告の署名付き AAB（Google Play 用）も作り、Artifact に上げる
+- 手元で作るとき：`npm ci` → `npm run android:sync` → `npm run android:open`（Android Studio）
+- 広告（AdMob）：バナーはタイトル・遊び方・一時停止・鑑定画面だけ。全画面広告は「鍛刀を始める」「タイトルへ戻る」「再開」「もう一振り打つ」のたび。リワード広告は焼割れのときの「焼き直し」（1 振り 1 回）
+- アプリ用のビルド（`npm run build:app`）では、Web 版だけの部分（行末に `// @web-only` を付けた行）を取り除く
+
+## ライセンス
+
+著作権はテックジム株式会社に帰属します（All rights reserved）。許可なく複製・改変・再配布すること、Web サイトやアプリ（Google Play、App Store など）として公開・販売すること、名前・ロゴ・アイコン・画像を使うことを禁じます。
+テックジムの受講生が学習目的で複製・改変することは認めますが、アプリストアでの公開・広告の掲載・販売などの商用利用は禁止し、著作権表示を残してください。詳しくは [LICENSE](LICENSE) をご覧ください。
