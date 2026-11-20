@@ -246,7 +246,8 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   function strike() {
     if (mode !== 'play' || !started) return;
-    if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) { /* 対応していない端末 */ } }
+    // 短すぎる振動は多くの Android 端末で感じられないため、45ms にする
+    if (navigator.vibrate) { try { navigator.vibrate(45); } catch (e) { /* 対応していない端末 */ } }
     Sound.init();
     const now = songT();
     let best = null, bd = 1e9;
