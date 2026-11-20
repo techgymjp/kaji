@@ -187,9 +187,9 @@ const RANKS = [
 
 function computeResult(st) {
   const sc = st.scores;
-  const kw = sc.kawa ?? 50, k = sc.tsukuri ?? 50, n = sc.nobashi ?? 50, q = sc.quench ?? 50;
+  const kw = sc.kawa ?? 50, sh = sc.shin ?? 50, k = sc.tsukuri ?? 50, n = sc.nobashi ?? 50, q = sc.quench ?? 50;
   let sharp = 0.4 * kw + 0.15 * k + 0.45 * q;
-  let tough = 0.3 * kw + 0.6 * k + 0.1 * n;
+  let tough = 0.25 * kw + 0.35 * sh + 0.3 * k + 0.1 * n;
   let beauty = 0.3 * kw + 0.35 * n + 0.35 * q;
   if (st.crack) { tough *= 0.35; sharp *= 0.7; beauty *= 0.75; }
   const total = Math.round((sharp + tough + beauty) / 3);
@@ -200,7 +200,7 @@ function computeResult(st) {
 
 function appraiserWords(st, r) {
   const sc = st.scores;
-  const names = EN ? { kawa: 'skin-steel forging', tsukuri: 'lamination', nobashi: 'drawing out', quench: 'quench' } : { kawa: '皮鉄の鍛錬', tsukuri: '造り込み', nobashi: '打ち延ばし', quench: '焼入れ' };
+  const names = EN ? { kawa: 'skin-steel forging', shin: 'core steel', tsukuri: 'lamination', nobashi: 'drawing out', quench: 'quench' } : { kawa: '皮鉄の鍛錬', shin: '心鉄', tsukuri: '造り込み', nobashi: '打ち延ばし', quench: '焼入れ' };
   const ent = Object.entries(sc).filter(([k]) => names[k]);
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
@@ -289,6 +289,7 @@ function showAppraisal() {
   const sc = state.scores;
   detail.innerHTML = `
     <dt>${L('皮鉄', 'Skin')}</dt><dd>${sc.kawa}${PO}${L(`折り返し${state.folds}回`, `${state.folds} folds`)}${PC}</dd>
+    <dt>${L('心鉄', 'Core')}</dt><dd>${sc.shin ?? '-'}</dd>
     <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}</dd>
     <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${sc.nobashi}</dd>
     <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd>

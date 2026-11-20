@@ -68,16 +68,18 @@ const SWORD_NAMES = ['月影', '村雨', '朧月', '白露', '霞', '春雷', '�
 const VIEW_SECTIONS = [
   { no: '一', title: L('皮鉄の鍛錬', 'Skin Steel'),
     how: L('叩いて伸ばし、切れ目を入れて折り返す。5回繰り返す。', 'Hammer it out, notch it, fold it. Five times.') },
-  { no: '二', title: L('造り込み', 'Lamination'),
-    how: L('柔らかい鋼を打ち締め、皮鉄をU字に曲げて包み、鍛着する。', 'Hammer the soft steel tight, bend the skin steel into a U around it, and weld.') },
-  { no: '三', title: L('打ち延ばし', 'Drawing Out'),
+  { no: '二', title: L('心鉄造り', 'Core Steel'),
+    how: L('柔らかい心鉄を叩いて締める。', 'Hammer the soft core steel tight.') },
+  { no: '三', title: L('造り込み', 'Lamination'),
+    how: L('皮鉄を叩いてU字に曲げ、心鉄を包んで鍛着する。', 'Bend the skin steel into a U and weld it around the core.') },
+  { no: '四', title: L('打ち延ばし', 'Drawing Out'),
     how: L('刀の長さまで打ち延ばし、切先を打ち出す。', 'Draw it out to a blade and form the tip.') },
-  { no: '四', title: L('焼入れ', 'Quench'),
+  { no: '五', title: L('焼入れ', 'Quench'),
     how: L('自動。ジュワッと水に入れ、反りが生まれる。', 'Automatic. Into the water — hiss — and the curve appears.') }
 ];
 /* 内部の作業の区切り（view：画面に出す区切りの番号） */
 const SECTIONS = [
-  { id: 'kawa', view: 0 }, { id: 'shin', view: 1 }, { id: 'tsukuri', view: 1 }, { id: 'nobashi', view: 2 }, { id: 'yaki', view: 3 }
+  { id: 'kawa', view: 0 }, { id: 'shin', view: 1 }, { id: 'tsukuri', view: 2 }, { id: 'nobashi', view: 3 }, { id: 'yaki', view: 4 }
 ];
 
 /* ============================================================
@@ -146,7 +148,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   }
   rest('section', { id: 'shin' });
   { const p = pick(POOLS.mid); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
-  events.push({ t: bar * BAR, kind: 'section', id: 'tsukuri' });   // 帯は出さず、そのまま造り込みへ
+  rest('section', { id: 'tsukuri' });
   callResponse([0, 4], [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
   rest('insert');
   callResponse(pick([[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 3, 6]]),
@@ -342,7 +344,8 @@ function stageKatana({ root, scope, state, finish, section }) {
     const carbonScore = clamp(1 - Math.abs(carbon - 0.68) / 0.3, 0, 1);
     state.scores = {
       kawa: Math.round(clamp((purity - 0.45) / 0.5 * 80 + carbonScore * 20, 0, 100)),
-      tsukuri: Math.round(avg([...acc.shin, ...acc.tsukuri]) * 100 * (1 - Math.abs(coreOff) / 40)),
+      shin: Math.round(avg(acc.shin) * 100),
+      tsukuri: Math.round(avg(acc.tsukuri) * 100 * (1 - Math.abs(coreOff) / 40)),
       nobashi: Math.round(avg(acc.nobashi) * 100),
       quench: Math.round(yk.qq * 100 * (yk.crack ? 0.4 : 1))
     };
