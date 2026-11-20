@@ -41,7 +41,7 @@ function showTitle() {
   wrap.innerHTML = `
     <p class="kicker">日本刀づくり</p>
     <h1 class="logo"><span>刀</span><span>鍛</span><span>冶</span></h1>
-    <p class="lead">玉鋼を選び、鍛え、焼き、研ぐ。<br>刀匠の七つの工程をたどり、世界に一振りの日本刀を打て。</p>`;
+    <p class="lead">玉鋼を選び、鍛え、焼き、研ぐ。<br>刀匠の八つの工程をたどり、世界に一振りの日本刀を打て。</p>`;
   wrap.append(c);
   const menu = el('div', 'menu');
   menu.append(
@@ -175,9 +175,9 @@ const RANKS = [
 
 function computeResult(st) {
   const sc = st.scores;
-  const m = sc.select ?? 50, f = sc.forge ?? 50, s = sc.shape ?? 50, h = sc.clay ?? 50, q = sc.quench ?? 50, p = sc.polish ?? 50;
-  let sharp = 0.2 * m + 0.3 * f + 0.35 * q + 0.15 * p;
-  let tough = 0.25 * m + 0.35 * f + 0.25 * s + 0.15 * q;
+  const m = sc.select ?? 50, f = sc.forge ?? 50, k = sc.tsukuri ?? 50, s = sc.shape ?? 50, h = sc.clay ?? 50, q = sc.quench ?? 50, p = sc.polish ?? 50;
+  let sharp = 0.2 * m + 0.25 * f + 0.1 * k + 0.3 * q + 0.15 * p;
+  let tough = (0.2 * m + 0.25 * f + 0.3 * k + 0.15 * s + 0.1 * q) * (st.methodTough ?? 1);
   let beauty = 0.3 * h + 0.35 * p + 0.15 * s + 0.2 * q;
   if (st.crack) { tough *= 0.35; sharp *= 0.7; beauty *= 0.75; }
   const total = Math.round((sharp + tough + beauty) / 3);
@@ -188,7 +188,7 @@ function computeResult(st) {
 
 function appraiserWords(st, r) {
   const sc = st.scores;
-  const names = { select: '玉鋼の見極め', forge: '鍛錬', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
+  const names = { select: '玉鋼の見極め', forge: '鍛錬', tsukuri: '造り込み', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
   const ent = Object.entries(sc).filter(([k]) => names[k]);
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
@@ -197,6 +197,7 @@ function appraiserWords(st, r) {
   parts.push(`${names[best[0]]}が特に見事である。`);
   if (worst[1] < 70) parts.push(`${names[worst[0]]}にはまだ工夫の余地があろう。`);
   const hn = st.hamonName === '自作' ? '独自の刃文' : `${st.hamonName}の刃文`;
+  if (st.method === 'maru') parts.push('丸鍛えゆえ、粘りに欠けるのは致し方なし。');
   parts.push(`地鉄は${st.folds}回の折り返しで${st.folds >= 12 ? 'よく詰み' : 'やや肌立ち'}、${hn}が${(st.hamonStrength ?? 1) > 0.7 ? '冴えている' : '淡く沈んでいる'}。`);
   return parts.join('');
 }
@@ -225,7 +226,7 @@ function showAppraisal() {
     rank: r.rank[1], rankYomi: r.rank[2], total: r.total,
     sharp: r.sharp, tough: r.tough, beauty: r.beauty,
     hamon: state.hamon, hamonName: state.hamonName, hamonStrength: state.hamonStrength,
-    folds: state.folds, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
+    folds: state.folds, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
     sori: state.sori, seed: state.seed, quenchT: state.quenchT, carbon: state.carbon,
     scores: state.scores
   };
@@ -256,7 +257,7 @@ function showAppraisal() {
   const sc = state.scores;
   detail.innerHTML = `
     <dt>玉鋼</dt><dd>${sc.select}</dd><dt>鍛錬</dt><dd>${sc.forge}（${state.folds}回・${(2 ** state.folds).toLocaleString()}層）</dd>
-    <dt>火造り</dt><dd>${sc.shape}</dd><dt>土置き</dt><dd>${sc.clay}（${state.hamonName}）</dd>
+    <dt>造り込み</dt><dd>${sc.tsukuri}（${state.methodName}）</dd><dt>火造り</dt><dd>${sc.shape}</dd><dt>土置き</dt><dd>${sc.clay}（${state.hamonName}）</dd>
     <dt>焼入れ</dt><dd>${sc.quench}（約${state.quenchT}℃）</dd><dt>研ぎ</dt><dd>${sc.polish}</dd>`;
   stats.append(detail);
   body.append(seal, stats);
@@ -288,7 +289,7 @@ function showKura() {
     item.append(el('div', 'kura-info', `
       <h3>「${rec.name}」<small>${rec.smith ? rec.smith + '作' : '無銘'}</small></h3>
       <p><span class="rank-tag">${rec.rank}</span> 総合 ${rec.total}　切れ味 ${rec.sharp}・強靭さ ${rec.tough}・美しさ ${rec.beauty}</p>
-      <p class="small">${rec.date || ''}　${rec.hamonName || ''}の刃文・${rec.folds}回鍛錬${rec.crack ? '・<span class="bad">焼割れ</span>' : ''}</p>`));
+      <p class="small">${rec.date || ''}　${rec.method ? rec.method + '・' : ''}${rec.hamonName || ''}の刃文・${rec.folds}回鍛錬${rec.crack ? '・<span class="bad">焼割れ</span>' : ''}</p>`));
     const del = btn('手放す', 'small ghost', () => {
       if (!confirm(`「${rec.name}」を蔵から手放しますか？`)) return;
       const l = loadKura(); l.splice(idx, 1); saveKura(l); showKura();

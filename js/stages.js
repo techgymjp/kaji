@@ -487,7 +487,428 @@ function stageForge({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 三、素延べ・火造り
+ * 三、造り込み（皮鉄と心鉄の組み合わせ・沸かし付け）
+ * ============================================================ */
+const TSUKURI_METHODS = {
+  kobuse: {
+    name: '甲伏せ', yomi: 'こうぶせ',
+    desc: 'U字に曲げた硬い<strong>皮鉄</strong>で、柔らかい<strong>心鉄</strong>を包む。最も広く用いられた造り込み。',
+    pieces: ['shin'], tol: 30, mult: 1, tough: 1
+  },
+  sanmai: {
+    name: '本三枚', yomi: 'ほんさんまい',
+    desc: '左右の<strong>皮鉄</strong>で挟み、刃に<strong>刃鉄</strong>、中に<strong>心鉄</strong>を据える。組むのは難しいが、強く粘る刀になる。',
+    pieces: ['ha', 'shin'], tol: 22, mult: 1.08, tough: 1.05
+  },
+  maru: {
+    name: '丸鍛え', yomi: 'まるぎたえ',
+    desc: '心鉄を入れず、一種類の鋼だけで鍛える古い造り。手間は少ないが、硬く折れやすい刀になる。',
+    pieces: [], tol: 0, mult: 0.7, tough: 0.75
+  }
+};
+
+function stageTsukuri({ root, scope, state, finish }) {
+  const ui = stageLayout(root,
+    '折り返し鍛錬した硬い<strong>皮鉄（かわがね）</strong>と、炭素の少ない柔らかい<strong>心鉄（しんがね）</strong>を組み合わせる。硬い皮で切れ味を、柔らかい芯で折れにくさを生む、日本刀ならではの工夫。<br>' +
+    'まず<strong>造り込みの方法</strong>を選べ。');
+  const [c, g] = makeCanvas(860, 400);
+  const W = c.W, H = c.H;
+  const parts = makeParticles();
+  const CX = 430, BOTTOM = 330, TOP = 150;
+  let method = null, M = null;
+  let phase = 'choose';      // choose | place | drop | heat | strike | weld | done
+  let pieceIdx = 0, swing = 0, swingT = 0, dropAnim = 0;
+  const placed = [];         // { kind, dx }
+  let T = 700, blowing = false, blowTimer = 0, heatQ = 0, strikes = [], marker = 0, mTime = 0, hammer = 0;
+  let weldAnim = 0, time = 0, msg = '', msgT = 0;
+  const say = (s, d = 1.2) => { msg = s; msgT = d; };
+
+  // ---- 方法の選択
+  const chooser = el('div', 'method-grid');
+  Object.entries(TSUKURI_METHODS).forEach(([key, m]) => {
+    const b = el('button', 'method');
+    b.type = 'button';
+    const [mc, mg] = makeCanvas(180, 120, 'method-canvas');
+    drawSection(mg, 90, 108, 0.5, key, 1100, true);
+    b.append(mc);
+    b.append(el('div', 'method-info', `<h3>${m.name}<small>${m.yomi}</small></h3><p>${m.desc}</p>`));
+    b.addEventListener('click', () => { Sound.click(); choose(key); });
+    chooser.append(b);
+  });
+  ui.view.append(chooser);
+
+  function choose(key) {
+    method = key; M = TSUKURI_METHODS[key];
+    chooser.remove();
+    ui.view.append(c);
+    if (M.pieces.length) {
+      phase = 'place';
+      ui.hint.innerHTML = `<strong>${M.name}</strong>：左右に揺れる${pieceLabel(M.pieces[0])}を、<strong>ちょうど中央に来た瞬間</strong>に落として組め。ずれると鋼が偏り、刃に心鉄が出てしまう。<br><kbd>Space</kbd> / クリック / ボタン：落とす`;
+    } else {
+      phase = 'heat';
+      ui.hint.innerHTML = `<strong>${M.name}</strong>：組む鋼はない。そのまま沸かして鍛え締めよ。`;
+      setHeatHint();
+    }
+    renderControls();
+  }
+  function pieceLabel(k) { return k === 'shin' ? '<strong>心鉄</strong>' : '<strong>刃鉄</strong>'; }
+  function setHeatHint() {
+    ui.hint.innerHTML = `<strong>沸かし付け</strong>：組んだ鋼をふいごで沸かし（黄白色・約1300℃）、鎚で打って一体に鍛着させる。温度が低いと鋼同士が付かず、<strong>鍛え割れ</strong>の元になる。<br>` +
+      '<kbd>Space</kbd>長押し：ふいご ／ <kbd>Enter</kbd>：取り出す ／ <kbd>Space</kbd>：打つ';
+  }
+
+  // ---- 操作
+  const dropBtn = btn('落とす', 'primary big', () => drop());
+  const blowBtn = btn('ふいごを吹く（長押し）', 'primary hold');
+  const takeBtn = btn('取り出して打つ', '', () => takeOut());
+  const hitBtn = btn('打つ', 'primary big', () => strike());
+  const startBlow = e => { e && e.preventDefault(); if (phase === 'heat') { blowing = true; Sound.init(); } };
+  const stopBlow = () => { blowing = false; };
+  scope.on(blowBtn, 'pointerdown', startBlow);
+  scope.on(blowBtn, 'pointerup', stopBlow);
+  scope.on(blowBtn, 'pointerleave', stopBlow);
+  scope.on(blowBtn, 'pointercancel', stopBlow);
+  scope.on(c, 'pointerdown', () => { if (phase === 'place') drop(); else if (phase === 'strike') strike(); });
+  scope.on(window, 'keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (phase === 'place') drop();
+      else if (phase === 'heat') startBlow();
+      else if (phase === 'strike') strike();
+    } else if (e.code === 'Enter' && phase === 'heat') { e.preventDefault(); takeOut(); }
+  });
+  scope.on(window, 'keyup', e => { if (e.code === 'Space') stopBlow(); });
+
+  function renderControls() {
+    ui.controls.innerHTML = '';
+    if (phase === 'place') ui.controls.append(dropBtn);
+    else if (phase === 'heat') ui.controls.append(blowBtn, takeBtn);
+    else if (phase === 'strike') ui.controls.append(hitBtn);
+  }
+
+  function drop() {
+    if (phase !== 'place') return;
+    placed.push({ kind: M.pieces[pieceIdx], dx: swing });
+    phase = 'drop';
+    dropAnim = 0;
+    renderControls();
+  }
+
+  function takeOut() {
+    if (phase !== 'heat') return;
+    if (T < 900) { say('まだ沸いていない！'); return; }
+    blowing = false;
+    heatQ = clamp(1 - Math.abs(T - 1310) / 170, 0, 1);
+    say(heatQ > 0.75 ? '良い沸き！' : T > 1430 ? '沸かしすぎ…' : '沸きが足りない', 1.2);
+    phase = 'strike';
+    strikes = [];
+    mTime = Math.random() * 2;
+    Sound.thud();
+    renderControls();
+  }
+
+  function strike() {
+    if (phase !== 'strike' || hammer > 0.01) return;
+    const d = Math.abs(marker);
+    const q = d < 0.07 ? 1 : d < 0.18 ? 0.6 : 0.15;
+    strikes.push(q * clamp((T - 750) / 450, 0.2, 1));
+    hammer = 1;
+    Sound.clang(0.6 + q * 0.4, T < 950);
+    parts.spark(570, 228, Math.round(10 + q * 40 * heatGlow(T) * 1.5), { T: T + 60 });
+    say(q === 1 ? '会心！' : q > 0.5 ? '良し' : '外した…', 0.6);
+    T -= 50;
+    if (strikes.length >= 4) scope.timeout(() => { phase = 'weld'; weldAnim = 0; renderControls(); }, 350);
+  }
+
+  function end() {
+    if (phase === 'done') return;
+    phase = 'done';
+    Sound.stopLoops();
+    const place = placed.length ? placed.reduce((a, p) => a + clamp(1 - Math.max(0, Math.abs(p.dx) - 3) / M.tol, 0, 1), 0) / placed.length : 1;
+    const sAvg = strikes.reduce((a, b) => a + b, 0) / strikes.length;
+    const weld = heatQ * 0.4 + sAvg * 0.6;
+    const raw = M.pieces.length ? 0.5 * place + 0.5 * weld : weld;
+    const score = Math.round(clamp(raw * 100 * M.mult, 0, 100));
+    state.method = method;
+    state.methodName = M.name;
+    state.methodTough = M.tough;
+    state.coreOffset = placed.length ? placed[placed.length - 1].dx : 0;
+    const off = placed.map(p => Math.abs(p.dx));
+    const worst = off.length ? Math.max(...off) : 0;
+    finish(score,
+      `${M.name}で造り込んだ。` +
+      (method === 'maru' ? '心鉄がないため、刃は硬いが折れやすい。' :
+        worst <= 6 ? '心鉄が中央にぴたりと収まった。' :
+        worst <= M.tol ? '心鉄がやや偏ったが、許容の内。' : '心鉄が大きく偏った。研ぎ減ると心鉄が刃に出るかもしれぬ。') +
+      (weld > 0.75 ? '沸かし付けも見事で、鋼はしっかりと一体になった。' : weld > 0.45 ? '沸かし付けはまずまず。' : '鍛着が甘く、鍛え割れの恐れがある。'));
+  }
+
+  /* 断面図。key: 方法、T: 温度、ghost: 選択画面用のすべて配置済み表示 */
+  function drawSection(gg, cx, bottom, scale, key, temp, ghost, offs = {}, hidden = {}) {
+    const s = scale;
+    const kawa = heatRGB(temp), shin = heatRGB(temp - 140), ha = heatRGB(temp + 40);
+    const gl = heatGlow(temp);
+    const shape = (pts, col, label) => {
+      gg.beginPath();
+      pts.forEach((p, i) => i ? gg.lineTo(cx + p[0] * s, bottom - p[1] * s) : gg.moveTo(cx + p[0] * s, bottom - p[1] * s));
+      gg.closePath();
+      gg.save();
+      gg.shadowColor = rgbStr(col, 0.8 * gl);
+      gg.shadowBlur = 18 * s * gl;
+      gg.fillStyle = rgbStr(col);
+      gg.fill();
+      gg.restore();
+      gg.strokeStyle = rgbStr(heatRGB(temp - 320), 0.9);
+      gg.lineWidth = 1.2;
+      gg.stroke();
+      if (label && s > 0.8) {
+        const cxl = pts.reduce((a, p) => a + p[0], 0) / pts.length, cyl = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        gg.fillStyle = 'rgba(40,15,5,0.75)';
+        gg.font = `bold ${15 * s}px "Shippori Mincho", serif`;
+        gg.textAlign = 'center';
+        gg.fillText(label, cx + cxl * s, bottom - cyl * s + 5);
+      }
+    };
+    if (key === 'kobuse') {
+      shape([[-80, 160], [-36, 160], [-36, 40], [36, 40], [36, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, '皮鉄');
+      if (ghost || !hidden.shin) {
+        const d = offs.shin || 0;
+        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 42], [-34 + d, 42]], shin, '心鉄');
+      }
+    } else if (key === 'sanmai') {
+      shape([[-80, 160], [-36, 160], [-36, 10], [-60, 6], [-80, 30]], kawa, '');
+      shape([[36, 160], [80, 160], [80, 30], [60, 6], [36, 10]], kawa, '');
+      if (s > 0.8) {
+        gg.fillStyle = 'rgba(40,15,5,0.75)'; gg.font = `bold ${15 * s}px "Shippori Mincho", serif`; gg.textAlign = 'center';
+        gg.fillText('皮', cx - 58 * s, bottom - 90 * s); gg.fillText('鉄', cx - 58 * s, bottom - 70 * s);
+        gg.fillText('皮', cx + 58 * s, bottom - 90 * s); gg.fillText('鉄', cx + 58 * s, bottom - 70 * s);
+      }
+      if (ghost || !hidden.ha) {
+        const d = offs.ha || 0;
+        shape([[-34 + d, 50], [34 + d, 50], [34 + d, 10], [0 + d, 0], [-34 + d, 10]], ha, '刃鉄');
+      }
+      if (ghost || !hidden.shin) {
+        const d = offs.shin || 0;
+        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 52], [-34 + d, 52]], shin, '心鉄');
+      }
+    } else {
+      shape([[-80, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, '鋼');
+    }
+  }
+
+  /* 鍛着後の断面：一体になった鋼。心鉄・刃鉄のずれが偏りとして残る */
+  function drawWelded(gg, temp, k) {
+    const sy = lerp(1, 0.82, smooth(clamp(k * 1.5, 0, 1)));   // 打ち締めて低くなる
+    const sx = lerp(1, 1.06, smooth(clamp(k * 1.5, 0, 1)));
+    const P = (x, y) => [CX + x * sx, BOTTOM - y * sy];
+    const poly = (pts, col, alpha = 1) => {
+      gg.beginPath();
+      pts.forEach((p, i) => { const q = P(p[0], p[1]); i ? gg.lineTo(q[0], q[1]) : gg.moveTo(q[0], q[1]); });
+      gg.closePath();
+      gg.fillStyle = rgbStr(col, alpha);
+      gg.fill();
+    };
+    const outer = [[-80, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]];
+    const kawa = heatRGB(temp), shin = heatRGB(temp - 150), ha = heatRGB(temp + 50);
+    gg.save();
+    gg.shadowColor = rgbStr(kawa, 0.8 * heatGlow(temp)); gg.shadowBlur = 24;
+    poly(outer, kawa);
+    gg.restore();
+    const off = kind => { const p = placed.find(q => q.kind === kind); return p ? clamp(p.dx * 0.45, -40, 40) : 0; };
+    const seam = 1 - smooth(clamp(k * 1.3, 0, 1));                 // 境目が消えていく
+    if (method === 'kobuse' || method === 'sanmai') {
+      const d = off('shin');
+      const yb = method === 'sanmai' ? 54 : 44;
+      poly([[-30 + d, 150], [30 + d, 150], [30 + d, yb], [-30 + d, yb]], shin, 0.95);
+      if (Math.abs(d) > 24) {                                      // 心鉄が表に出てしまう
+        gg.fillStyle = '#ffb38a'; gg.font = '14px serif'; gg.textAlign = 'center';
+        const q = P(d > 0 ? 80 : -80, 175);
+        gg.fillText('心鉄が皮から出ている', q[0], q[1]);
+      }
+    }
+    if (method === 'sanmai') {
+      const d = off('ha');
+      poly([[-30 + d, 50], [30 + d, 50], [30 + d, 10], [0 + d, 1], [-30 + d, 10]], ha, 0.95);
+    }
+    if (seam > 0.02 && method !== 'maru') {
+      gg.strokeStyle = rgbStr(heatRGB(temp - 350), 0.7 * seam);
+      gg.lineWidth = 1.5;
+      gg.beginPath();
+      [[-36, 160, -36, method === 'sanmai' ? 8 : 40], [36, 160, 36, method === 'sanmai' ? 8 : 40]].forEach(([x1, y1, x2, y2]) => {
+        const a = P(x1, y1), b = P(x2, y2); gg.moveTo(a[0], a[1]); gg.lineTo(b[0], b[1]);
+      });
+      gg.stroke();
+    }
+    gg.strokeStyle = rgbStr(heatRGB(temp - 320), 0.9);
+    gg.lineWidth = 1.2;
+    gg.beginPath();
+    outer.forEach((p, i) => { const q = P(p[0], p[1]); i ? gg.lineTo(q[0], q[1]) : gg.moveTo(q[0], q[1]); });
+    gg.closePath(); gg.stroke();
+    if (k > 0.5) {
+      gg.fillStyle = `rgba(40,15,5,${0.7 * (k - 0.5) * 2})`;
+      gg.font = 'bold 15px "Shippori Mincho", serif'; gg.textAlign = 'center';
+      if (method !== 'maru') {
+        const q1 = P(off('shin'), 105), q2 = P(off('shin') > 0 ? -60 : 60, 120);
+        gg.fillText('心鉄', q1[0], q1[1]); gg.fillText('皮鉄', q2[0], q2[1]);
+        if (method === 'sanmai') { const q3 = P(off('ha'), 22); gg.fillText('刃鉄', q3[0], q3[1]); }
+      }
+    }
+  }
+
+  renderControls();
+  scope.loop(dt => {
+    time += dt;
+    msgT -= dt;
+    hammer = Math.max(0, hammer - dt * 4);
+    parts.update(dt);
+    if (phase === 'choose') return;
+
+    // ---- 更新
+    if (phase === 'place') {
+      swingT += dt * (0.55 + pieceIdx * 0.2);
+      const f = swingT % 2;
+      swing = (f < 1 ? f * 2 - 1 : 3 - f * 2) * 150;
+      T = 1150 + Math.sin(time * 2) * 15;
+    } else if (phase === 'drop') {
+      dropAnim += dt / 0.35;
+      if (dropAnim >= 1) {
+        Sound.thud();
+        Sound.clang(0.4, true);
+        const dx = Math.abs(placed[placed.length - 1].dx);
+        say(dx <= 6 ? 'ぴたり！' : dx <= M.tol ? '少しずれた' : '大きくずれた…', 1);
+        pieceIdx++;
+        if (pieceIdx < M.pieces.length) { phase = 'place'; renderControls(); }
+        else {
+          phase = 'placed';
+          scope.timeout(() => { phase = 'heat'; T = 900; setHeatHint(); renderControls(); }, 900);
+        }
+      }
+    } else if (phase === 'heat') {
+      if (blowing) {
+        T += (190 + Math.max(0, 1300 - T) * 0.12) * dt;
+        blowTimer -= dt;
+        if (blowTimer <= 0) { Sound.whoosh(); blowTimer = 0.5; }
+      } else T += (T < 950 ? 25 : -35) * dt;
+      T = Math.min(T, 1560);
+      Sound.fire(blowing ? 0.9 : 0.4);
+      if (T > 1250 && Math.random() < dt * 10) parts.spark(170 + rand(-50, 50), 205, 1, { T: 1400, angle: -Math.PI / 2, spread: 0.5, min: 100, max: 300 });
+    } else if (phase === 'strike') {
+      Sound.fire(0.2);
+      T -= 20 * dt;
+      mTime += dt * 0.75;
+      const f = mTime % 2;
+      marker = f < 1 ? f * 2 - 1 : 3 - f * 2;
+    } else if (phase === 'weld') {
+      weldAnim += dt / 2.2;
+      T = Math.max(700, T - 100 * dt);
+      if (weldAnim >= 1) end();
+    }
+
+    // ---- 描画
+    const sectionView = phase === 'place' || phase === 'drop' || phase === 'placed' || phase === 'weld';
+    if (sectionView) {
+      // 断面を見下ろす作業台
+      const bg = g.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#120c09'); bg.addColorStop(1, '#1c130e');
+      g.fillStyle = bg; g.fillRect(0, 0, W, H);
+      const ag = g.createLinearGradient(0, BOTTOM, 0, BOTTOM + 30);
+      ag.addColorStop(0, '#55575e'); ag.addColorStop(0.2, '#26272c'); ag.addColorStop(1, '#111215');
+      g.fillStyle = ag; g.fillRect(200, BOTTOM, 460, 30);
+      g.fillStyle = '#c9b89a'; g.font = '13px serif'; g.textAlign = 'left';
+      g.fillText('断面図', 24, 30);
+      const offs = {}, hidden = {};
+      M.pieces.forEach(k => { hidden[k] = true; });
+      placed.forEach((p, i) => {
+        if (phase === 'drop' && i === placed.length - 1) return;
+        hidden[p.kind] = false; offs[p.kind] = p.dx;
+      });
+      if (phase === 'weld') drawWelded(g, T, weldAnim);
+      else drawSection(g, CX, BOTTOM, 1, method, 1150, false, offs, hidden);
+      // 揺れている / 落下中のピース
+      const drawPiece = (kind, dx, yTop) => {
+        const col = kind === 'shin' ? heatRGB(1010) : heatRGB(1190);
+        const h = kind === 'shin' ? 106 : 46;
+        g.save();
+        g.shadowColor = rgbStr(col, 0.7); g.shadowBlur = 16;
+        g.fillStyle = rgbStr(col);
+        g.fillRect(CX - 34 + dx, yTop, 68, h);
+        g.restore();
+        g.strokeStyle = 'rgba(60,20,5,0.9)'; g.strokeRect(CX - 34 + dx, yTop, 68, h);
+        g.fillStyle = 'rgba(40,15,5,0.75)'; g.font = 'bold 15px "Shippori Mincho", serif'; g.textAlign = 'center';
+        g.fillText(kind === 'shin' ? '心鉄' : '刃鉄', CX + dx, yTop + h / 2 + 5);
+        // 箸（鋏）
+        g.strokeStyle = '#2b2b2f'; g.lineWidth = 5;
+        g.beginPath(); g.moveTo(CX + dx - 20, yTop + 4); g.lineTo(CX + dx - 60, yTop - 60); g.moveTo(CX + dx + 20, yTop + 4); g.lineTo(CX + dx + 60, yTop - 60); g.stroke();
+      };
+      if (phase === 'place') {
+        const k = M.pieces[pieceIdx];
+        drawPiece(k, swing, 40);
+        // 中央の目印
+        g.setLineDash([5, 6]); g.strokeStyle = 'rgba(232,198,108,0.6)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(CX, 20); g.lineTo(CX, BOTTOM); g.stroke(); g.setLineDash([]);
+      } else if (phase === 'drop') {
+        const p = placed[placed.length - 1];
+        const restTop = BOTTOM - (p.kind === 'shin' ? 158 : 50);
+        drawPiece(p.kind, p.dx, lerp(40, restTop, smooth(clamp(dropAnim, 0, 1))));
+      }
+      if (phase === 'weld') {
+        g.font = 'bold 28px "Shippori Mincho", serif'; g.textAlign = 'center'; g.fillStyle = '#ffe9c4';
+        g.fillText('鍛着！', CX, 90);
+      }
+    } else {
+      // 沸かし付け：鍛冶場
+      drawSmithy(g, W, H, heatGlow(T), 470);
+      g.fillStyle = '#2b1c14'; g.fillRect(40, H * 0.72 - 40, 240, 70);
+      g.fillStyle = '#3a271b'; g.fillRect(30, H * 0.72 - 50, 260, 14);
+      const inFire = phase === 'heat';
+      Sword.drawCoals(g, 55, H * 0.72 - 70, 210, 50, inFire ? (blowing ? 1 : 0.35) : 0.2, time);
+      const bx = inFire ? 85 : 500, by = inFire ? H * 0.72 - 78 : H * 0.72 - 50 - 40;
+      Sword.drawHotBar(g, bx, by, 150, 40, T, { seed: 91, time, layers: 3, scale: 50 });
+      if (inFire) Sword.drawCoals(g, 55, H * 0.72 - 50, 210, 26, blowing ? 1 : 0.35, time + 3, 21);
+      if (phase === 'strike' || hammer > 0) {
+        const lift = phase === 'strike' ? (1 - hammer) : 1;
+        const hy = by - 22 - lift * 70;
+        g.save(); g.translate(570, hy); g.rotate(-0.25 * lift);
+        g.fillStyle = '#5a3d22'; g.fillRect(20, -6, 150, 9);
+        const hg = g.createLinearGradient(0, -22, 0, 22);
+        hg.addColorStop(0, '#5b5d63'); hg.addColorStop(0.5, '#2a2b2f'); hg.addColorStop(1, '#141518');
+        g.fillStyle = hg; g.fillRect(-26, -20, 52, 40);
+        g.restore();
+      }
+      // 温度計
+      const gx = W - 52, gy = 40, gh = 260;
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(gx - 8, gy - 8, 40, gh + 16);
+      for (let i = 0; i < gh; i++) { g.fillStyle = rgbStr(heatRGB(1550 - (i / gh) * 1050)); g.fillRect(gx, gy + i, 24, 1); }
+      const yOf = tt => gy + (1550 - tt) / 1050 * gh;
+      g.strokeStyle = '#e8c66c'; g.lineWidth = 2; g.strokeRect(gx - 3, yOf(1380), 30, yOf(1240) - yOf(1380));
+      const ty = yOf(clamp(T, 500, 1550));
+      g.fillStyle = '#fff'; g.beginPath(); g.moveTo(gx - 6, ty); g.lineTo(gx - 16, ty - 6); g.lineTo(gx - 16, ty + 6); g.fill();
+      if (phase === 'strike') {
+        const tx = 360, tw = 380, ty2 = 50;
+        g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(tx - 10, ty2 - 16, tw + 20, 32);
+        g.fillStyle = 'rgba(232,198,108,0.25)'; g.fillRect(tx + tw / 2 - tw * 0.09, ty2 - 10, tw * 0.18, 20);
+        g.fillStyle = 'rgba(232,198,108,0.7)'; g.fillRect(tx + tw / 2 - tw * 0.035, ty2 - 10, tw * 0.07, 20);
+        g.fillStyle = '#fff'; g.fillRect(tx + tw / 2 + marker * tw / 2 - 2, ty2 - 14, 4, 28);
+        g.fillStyle = '#c9b89a'; g.font = '13px serif'; g.textAlign = 'left';
+        g.fillText(`鎚 ${strikes.length + 1} / 4`, tx, ty2 + 34);
+      }
+    }
+    parts.draw(g);
+    if (msgT > 0) {
+      g.font = 'bold 26px "Shippori Mincho", serif'; g.textAlign = 'center';
+      g.fillStyle = `rgba(255,236,200,${clamp(msgT * 2, 0, 1)})`;
+      g.fillText(msg, W / 2 - 40, 130);
+    }
+    ui.status.innerHTML =
+      `<div class="stat"><span>造り込み</span><b>${M.name}</b></div>` +
+      (M.pieces.length ? `<div class="stat"><span>組み</span><b>${Math.min(placed.length, M.pieces.length)} / ${M.pieces.length}</b></div>` : '') +
+      `<div class="stat"><span>工程</span><b>${phase === 'place' || phase === 'drop' || phase === 'placed' ? '組み合わせ' : '沸かし付け'}</b></div>`;
+  });
+}
+
+/* ============================================================
+ * 四、素延べ・火造り
  * ============================================================ */
 function stageShape({ root, scope, state, finish }) {
   const ui = stageLayout(root,
@@ -666,7 +1087,7 @@ function stageShape({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 四、土置き
+ * 五、土置き
  * ============================================================ */
 const HAMON_N = 120;
 const HAMON_PRESETS = {
@@ -847,7 +1268,7 @@ function stageClay({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 五、焼入れ
+ * 六、焼入れ
  * ============================================================ */
 function stageQuench({ root, scope, state, finish }) {
   const TARGET = 790;
@@ -965,7 +1386,7 @@ function stageQuench({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 六、研ぎ
+ * 七、研ぎ
  * ============================================================ */
 function stagePolish({ root, scope, state, finish }) {
   const STONES = [
@@ -1116,7 +1537,7 @@ function stagePolish({ root, scope, state, finish }) {
 }
 
 /* ============================================================
- * 七、銘切り
+ * 八、銘切り
  * ============================================================ */
 function stageMei({ root, scope, state, finish }) {
   const ui = stageLayout(root, '最後に、茎（なかご）へ<strong>鏨（たがね）で銘を切る</strong>。刀工としての名と、この刀に与える号を記せ。');
@@ -1173,15 +1594,17 @@ const STAGES = [
   { id: 'select', no: '一', title: '玉鋼選び', yomi: 'たまはがねえらび', run: stageSelect,
     intro: '日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。刀匠はまず玉鋼を割り、その破面を見て炭素量や不純物の少ない良質な部分を選び分ける。' },
   { id: 'forge', no: '二', title: '積み沸かし・折り返し鍛錬', yomi: 'つみわかし・おりかえしたんれん', run: stageForge,
-    intro: '選んだ玉鋼を積み重ねて火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。15回折り返せば層は3万を超える。' },
-  { id: 'shape', no: '三', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
-    intro: '鍛えた鋼（皮鉄で心鉄を包んだもの）を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。' },
-  { id: 'clay', no: '四', title: '土置き', yomi: 'つちおき', run: stageClay,
+    intro: '選んだ玉鋼を積み重ねて火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。' },
+  { id: 'tsukuri', no: '三', title: '造り込み', yomi: 'つくりこみ', run: stageTsukuri,
+    intro: '鍛えた硬い<strong>皮鉄</strong>と、炭素の少ない柔らかい<strong>心鉄</strong>を組み合わせる。甲伏せ・本三枚などの方法があり、皮鉄で心鉄を包んで<strong>沸かし付け</strong>、一本の鋼にする。「折れず、曲がらず、よく切れる」日本刀の秘密はこの組み合わせにある。' },
+  { id: 'shape', no: '四', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
+    intro: '造り込んだ鋼を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。' },
+  { id: 'clay', no: '五', title: '土置き', yomi: 'つちおき', run: stageClay,
     intro: '粘土・炭の粉・砥石の粉を混ぜた<strong>焼刃土</strong>を刀身に塗る。刃側は薄く、棟側は厚く置くことで、焼入れの冷え方に差が生まれ、硬い刃と粘り強い地、そして<strong>刃文</strong>が生まれる。' },
-  { id: 'quench', no: '五', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
+  { id: 'quench', no: '六', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
     intro: '刀鍛冶の最も緊張する瞬間。火の色を見極めるため鍛冶場を暗くし、刀身を均一に熱して一気に水へ入れる。急冷で刃が硬化し、日本刀特有の<strong>反り</strong>が生まれる。' },
-  { id: 'polish', no: '六', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
+  { id: 'polish', no: '七', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
     intro: '鍛冶押しを終えた刀は<strong>研師</strong>の手に渡る。荒砥から仕上砥まで十数種の砥石を使い分け、刀の姿を整え、地鉄の肌と刃文の美しさを引き出していく。' },
-  { id: 'mei', no: '七', title: '銘切り', yomi: 'めいきり', run: stageMei,
+  { id: 'mei', no: '八', title: '銘切り', yomi: 'めいきり', run: stageMei,
     intro: '茎に鑢目をかけ、<strong>鏨</strong>で刀工の名（銘）と年紀を刻む。銘は刀匠がその出来に責任を持つ証である。' }
 ];
