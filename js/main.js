@@ -205,7 +205,11 @@ function appraiserWords(st, r) {
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
   const parts = [];
+  const mk = st.marks || {};
+  const nK = (mk.kinsuji || []).length, nF = (mk.flaws || []).length;
   if (EN) {
+    if (nK) parts.push(`Golden lines (kinsuji) flash within the hamon — proof you breathed as one with your master. `);
+    if (nF) parts.push(`${nF} forging flaw${nF > 1 ? 's' : ''} remain where beats were missed. `);
     if (st.crack) parts.push('Sadly, a quench crack runs through the edge — it could never be used in battle. ');
     parts.push(`The ${names[best[0]]} is especially fine. `);
     if (worst[1] < 70) parts.push(`The ${names[worst[0]]} leaves room for improvement. `);
@@ -214,6 +218,8 @@ function appraiserWords(st, r) {
     parts.push(`The ${term(st.grainName || '板目肌')} is ${(st.purity ?? 0.8) >= 0.85 ? 'tight and refined' : 'somewhat coarse'}, and ${hn} is ${(st.hamonStrength ?? 1) > 0.7 ? 'bright and vivid' : 'faint'}.`);
     return parts.join('');
   }
+  if (nK) parts.push(`刃中に金筋が${nK > 1 ? nK + '筋' : ''}光る。師匠と呼吸が合った証である。`);
+  if (nF) parts.push(`拍子を逃した所に鍛え傷が${nF}箇所残る。`);
   if (st.crack) parts.push('惜しむらくは刃に焼割れがある。これでは実戦には使えぬ。');
   parts.push(`${names[best[0]]}が特に見事である。`);
   if (worst[1] < 70) parts.push(`${names[worst[0]]}にはまだ工夫の余地があろう。`);
@@ -232,10 +238,43 @@ function swordOptions(rec, x, y, length, width) {
     polish: clamp((rec.polish ?? 60) / 100, 0.15, 1),
     folds: rec.jiFolds ?? rec.folds ?? 12,
     grain: rec.grain,
+    marks: rec.marks,
     crack: rec.crack,
     scratches: rec.scratches || 0,
     seed: rec.seed || 1
   };
+}
+
+/* 叩いた出来が残した働き：見どころの拡大図と一覧 */
+function markPanel(rec) {
+  const m = rec.marks;
+  const box = el('div', 'marks');
+  const best = m.prof.indexOf(Math.max(...m.prof));
+  const focus = (m.kinsuji && m.kinsuji.length) ? m.kinsuji[0] : (m.chikei && m.chikei.length) ? m.chikei[0] : (best + 0.5) / m.prof.length;
+  const [c, g] = makeCanvas(1000, 230, 'closeup-canvas');
+  const LEN = 2600, t = focus * Sword.TK;
+  const opt = { ...swordOptions(rec, 0, 0, LEN, 160), nakago: false, habaki: false, bg: '#120e0b', shadow: false };
+  opt.x = 500 - t * LEN;
+  const G = Sword.geom(opt);
+  const mid = G.P(t, 0.5);
+  opt.y = 115 - (mid[1] - opt.y);
+  Sword.draw(g, opt);
+  box.append(el('p', 'marks-label', L('見どころ（拡大）', 'Highlight (close-up)')), c);
+  const nCrisp = m.prof.filter(q => q >= 0.85).length, nDull = m.prof.filter(q => q < 0.6).length;
+  const chips = [
+    [(m.kinsuji || []).length, L('金筋', 'Kinsuji'), L('会心の連続が、刃中に光る線になった', 'A run of perfect strikes became a shining line in the hamon')],
+    [(m.chikei || []).length, L('地景', 'Chikei'), L('会心の多い所に、地鉄の光る筋が現れた', 'Shining streaks in the steel where perfect strikes gathered')],
+    [nCrisp, L('冴えた刃文', 'Vivid hamon'), L('会心の多い所は、刃文が高く華やかに冴えた', 'Where you struck true, the hamon rose bright and lively')],
+    [nDull, L('眠い刃文', 'Dull hamon'), L('拍子がずれた所は、刃文が低くぼんやりした', 'Where the beat slipped, the hamon lies low and hazy')],
+    [(m.flaws || []).length, L('鍛え傷', 'Flaws'), L('見逃した所に、小さな傷が残った', 'Small flaws remain where beats were missed')]
+  ];
+  const list = el('ul', 'marks-list');
+  chips.forEach(([n, name, desc], i) => {
+    if (!n) return;
+    list.append(el('li', i >= 3 ? 'bad' : 'good', `<b>${name}</b><span>${i === 2 || i === 3 ? L(`${n}区画`, `${n} sections`) : `×${n}`}</span><small>${desc}</small>`));
+  });
+  box.append(el('p', 'marks-lead', L('あなたの拍子は、刀の模様として残った。', 'Your rhythm lives on in the patterns of the blade.')), list);
+  return box;
 }
 
 function showAppraisal() {
@@ -249,7 +288,7 @@ function showAppraisal() {
     rank: r.rank[1], rankYomi: r.rank[2], total: r.total,
     sharp: r.sharp, tough: r.tough, beauty: r.beauty,
     hamon: state.hamon, hamonName: state.hamonName, hamonStrength: state.hamonStrength,
-    folds: state.folds, jiFolds: state.jiFolds, grain: state.grain, grainName: state.grainName, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
+    folds: state.folds, jiFolds: state.jiFolds, marks: state.marks, grain: state.grain, grainName: state.grainName, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
     sori: state.sori, seed: state.seed, quenchT: state.quenchT, carbon: state.carbon,
     scores: state.scores
   };
@@ -279,6 +318,7 @@ function showAppraisal() {
     Sword.draw(g, { ...swordOpt, bg: '#120e0b' });
   });
 
+  if (rec.marks) wrap.append(markPanel(rec));
   const body = el('div', 'appraisal-body');
   const seal = el('div', 'rank-seal', `<span class="rank">${term(r.rank[1])}</span><span class="yomi">${r.rank[2]}</span><span class="total">${L('総合', 'Total')} ${r.total}</span>`);
   const stats = el('div', 'stats');

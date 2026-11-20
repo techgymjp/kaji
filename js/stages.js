@@ -271,9 +271,53 @@ function stageKatana({ root, scope, state, finish, section }) {
     }
   }
 
+  /* 一打ごとの出来を、刀身のどの位置に残すか（0 = 元、1 = 切先） */
+  const hitLog = [];
+  let perfectRun = [];
+  const kinsuji = [];
+  function bladePos(st) {
+    if (st.k === 'notch') return 0.5;
+    if (st.k === 'fold') return 0.85;
+    if (st.k === 'tip') return 0.95;
+    if (st.s === 'tsukuri') return st.k === 'bend' ? 0.3 : st.k === 'close' ? 0.6 : 0.45;
+    return clamp(st.p ?? 0.5, 0.03, 0.97);
+  }
+  function logHit(st, q) {
+    const pos = bladePos(st);
+    hitLog.push({ pos, q, s: st.s });
+    if (q === 1) perfectRun.push(pos);
+    else {
+      if (perfectRun.length >= 6) kinsuji.push(perfectRun[Math.floor(perfectRun.length / 2)]);
+      perfectRun = [];
+    }
+  }
+  /* 刀身を24区画に分け、区画ごとの出来（0〜1）と働きを求める */
+  function buildMarks() {
+    if (perfectRun.length >= 6) { kinsuji.push(perfectRun[Math.floor(perfectRun.length / 2)]); perfectRun = []; }
+    const NB = 24, sum = new Array(NB).fill(0), cnt = new Array(NB).fill(0);
+    // 刀の形を最終的に決める打ち延ばしの一打を重く数える
+    const SW = { kawa: 0.6, shin: 0.3, tsukuri: 0.3, nobashi: 2.2 };
+    for (const h of hitLog) {
+      const i = clamp(Math.floor(h.pos * NB), 0, NB - 1);
+      // 近くの区画にも少し影響させてなめらかに
+      for (let d = -1; d <= 1; d++) {
+        const j = i + d; if (j < 0 || j >= NB) continue;
+        const w = (d === 0 ? 1 : 0.4) * (SW[h.s] || 1);
+        sum[j] += h.q * w; cnt[j] += w;
+      }
+    }
+    const all = hitLog.length ? hitLog.reduce((a, h) => a + h.q, 0) / hitLog.length : 0.5;
+    const prof = sum.map((v, i) => (cnt[i] ? v / cnt[i] : all));
+    const chikei = prof.map((q, i) => [q, (i + 0.5) / NB]).filter(([q]) => q >= 0.93)
+      .sort((a, b) => b[0] - a[0]).slice(0, 5).map(([, t]) => t);
+    const flaws = hitLog.filter(h => h.q === 0 && (h.s === 'kawa' || h.s === 'nobashi')).slice(0, 8).map(h => h.pos);
+    return { prof: prof.map(v => Math.round(v * 100) / 100), kinsuji: kinsuji.slice(0, 3), chikei, flaws };
+  }
+
   function judge(n, q) {
     n.judged = true;
     const st = n.step;
+    logHit(st, q);
     const x = targetX(st), y = topY(st);
     acc[st.s].push(q);
     const hf = clamp((T - 850) / 450, 0.5, 1);
@@ -330,7 +374,16 @@ function stageKatana({ root, scope, state, finish, section }) {
     const quenchT = Math.round(790 + (1 - qq) * (Math.random() < 0.5 ? -1 : 1) * 90);
     const hamonName = accAll >= 0.85 ? '丁子' : accAll >= 0.7 ? '互の目' : accAll >= 0.55 ? '湾れ' : '直刃';
     const f = HAMON_PRESETS[hamonName];
-    yk = { t: -1.3, accAll, qq, crack, quenchT, hamonName, hamon: Array.from({ length: HAMON_N }, (_, i) => f(i / (HAMON_N - 1))), sori: 10 + 12 * qq, sizzled: false };
+    const marks = buildMarks();
+    // 出来の良い区画ほど刃文が高く華やかに乱れ、ずれた区画は低く平らになる
+    const hamon = Array.from({ length: HAMON_N }, (_, i) => {
+      const u = i / (HAMON_N - 1);
+      const b = Math.min(marks.prof.length - 1, Math.floor(u * Sword.TK * marks.prof.length));
+      const lq = marks.prof[b];
+      const base = 0.17, v = f(u);
+      return Math.round((base + (v - base) * (0.25 + 0.95 * lq) + 0.03 * lq) * 1000) / 1000;
+    });
+    yk = { t: -1.3, accAll, qq, crack, quenchT, hamonName, hamon, marks, sori: 10 + 12 * qq, sizzled: false };
     Music.grooveOff();
     Music.setMood('tense');
     enterSection('yaki');
@@ -355,7 +408,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       grain: yk.accAll >= 0.6 ? 'itame' : 'mokume',
       jiFolds: Math.round(8 + purity * 7),
       methodName: '甲伏せ',
-      hamon: yk.hamon, hamonName: yk.hamonName,
+      hamon: yk.hamon, hamonName: yk.hamonName, marks: yk.marks,
       hamonStrength: yk.qq >= 0.6 ? 1 : lerp(0.3, 1, yk.qq / 0.6),
       polish: Math.round(70 + 30 * yk.accAll), scratches: 0,
       sori: yk.sori, crack: yk.crack, quenchT: yk.quenchT

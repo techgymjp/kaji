@@ -111,6 +111,7 @@ const Sword = (() => {
     return { C, N, w, P, L, W, x0, y0 };
   }
 
+  const Sword_TK_ref = () => TK;
   function hAt(h, t) {
     if (!h || !h.length) return 0.22;
     const N = h.length;
@@ -379,6 +380,72 @@ const Sword = (() => {
         const a = r() * (0.25 + 0.6 * p) * S;
         ctx.fillStyle = `rgba(255,255,255,${a})`;
         ctx.fillRect(q[0], q[1], r() < 0.15 ? 1.4 : 0.8, r() < 0.15 ? 1.4 : 0.8);
+      }
+    }
+
+    // ---- 叩いた出来が残した働き（o.marks）
+    if (o.marks && o.hamon && !heated) {
+      const m = o.marks, h = o.hamon, NB = m.prof.length;
+      const tOf = i => (i / NB) * Sword_TK_ref();
+      // 区画の出来をなめらかにつないで、細い帯ごとに塗る（境目が出ないように）
+      const qAt = u => {
+        const x = clamp(u * NB - 0.5, 0, NB - 1), i0 = Math.floor(x), i1 = Math.min(NB - 1, i0 + 1);
+        return lerp(m.prof[i0], m.prof[i1], smooth(x - i0));
+      };
+      // 長さ方向のグラデーションで一度に塗る（帯の継ぎ目を出さない）
+      const pa = G.P(0, 0), pb = G.P(Sword_TK_ref(), 0);
+      const dullG = ctx.createLinearGradient(pa[0], pa[1], pb[0], pb[1]);
+      const vivG = ctx.createLinearGradient(pa[0], pa[1], pb[0], pb[1]);
+      const SUB = 48;
+      for (let j = 0; j <= SUB; j++) {
+        const u = j / SUB, q = qAt(u);
+        dullG.addColorStop(u, `rgba(66,72,82,${q < 0.62 ? Math.min(0.6, (0.62 - q) * 1.5) * p : 0})`);
+        vivG.addColorStop(u, `rgba(255,255,255,${q >= 0.82 ? 0.34 * p * clamp((q - 0.82) / 0.18, 0, 1) : 0})`);
+      }
+      ctx.fillStyle = dullG;
+      ctx.fill(band(G, 0, Sword_TK_ref(), -0.02, t => hAt(h, t) + 0.02, 160));
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,255,255,0.7)'; ctx.shadowBlur = 5;
+      ctx.strokeStyle = vivG; ctx.lineWidth = 1.4;
+      ctx.stroke(line(G, HABAKI, Sword_TK_ref(), t => hAt(h, t), 160));
+      ctx.restore();
+      // 冴えた所に沸を散らす
+      for (let n = 0; n < 260; n++) {
+        const u = r(), q = qAt(u);
+        if (q < 0.82 || r() > (q - 0.8) * 4) continue;
+        const t = u * Sword_TK_ref(), v = hAt(h, t) + (r() - 0.6) * 0.06;
+        const q2 = G.P(t, v);
+        ctx.fillStyle = `rgba(255,255,255,${0.4 + 0.6 * r()})`;
+        ctx.fillRect(q2[0], q2[1], 1.3, 1.3);
+      }
+      // 地景：地鉄に光る太い肌目
+      ctx.lineWidth = 1.1;
+      for (const tc of m.chikei || []) {
+        const t = tc * Sword_TK_ref();
+        for (let k = 0; k < 3; k++) {
+          const v0 = hAt(h, t) + 0.12 + k * 0.13, ph = r() * 6;
+          ctx.strokeStyle = `rgba(215,225,240,${0.35 * p})`;
+          ctx.stroke(line(G, t - 0.02, t + 0.025, tt => v0 + 0.012 * Math.sin(tt * 160 + ph), 14));
+          ctx.strokeStyle = `rgba(10,14,20,${0.35 * p})`;
+          ctx.stroke(line(G, t - 0.018, t + 0.022, tt => v0 + 0.012 + 0.012 * Math.sin(tt * 160 + ph), 14));
+        }
+      }
+      // 金筋：刃中に細く走る光る線（会心の連続の証）
+      for (const tc of (m.kinsuji || []).slice(0, 3)) {
+        const t = tc * Sword_TK_ref();
+        ctx.save();
+        ctx.shadowColor = 'rgba(255,255,255,0.9)'; ctx.shadowBlur = 5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = Math.max(0.9, G.W * 0.012);
+        ctx.stroke(line(G, t - 0.018, t + 0.018, tt => Math.max(0.04, hAt(h, tt) * 0.55 + 0.015 * Math.sin((tt - t) * 90)), 12));
+        ctx.restore();
+      }
+      // 鍛え傷：見逃した所に残る小さな割れ
+      for (const tc of m.flaws || []) {
+        const t = tc * Sword_TK_ref(), v = 0.5 + r() * 0.15;
+        ctx.strokeStyle = 'rgba(8,8,10,0.85)'; ctx.lineWidth = 1.3;
+        ctx.stroke(line(G, t - 0.012, t + 0.012, tt => v + 0.01 * Math.sin(tt * 300), 8));
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.6;
+        ctx.stroke(line(G, t - 0.011, t + 0.011, tt => v + 0.006 + 0.01 * Math.sin(tt * 300), 8));
       }
     }
 
