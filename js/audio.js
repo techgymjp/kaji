@@ -61,6 +61,8 @@ const Sound = (() => {
 
   return {
     init,
+    get ctx() { return ac; },
+    get out() { return master; },
     get enabled() { return enabled; },
     toggle() {
       enabled = !enabled;

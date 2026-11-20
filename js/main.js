@@ -34,6 +34,7 @@ function renderHud(active) {
 /* ---------------- タイトル ---------------- */
 function showTitle() {
   clearScreen();
+  Music.setMood('calm');
   renderHud(-1);
   scope = makeScope();
   const wrap = el('section', 'title-screen');
@@ -79,6 +80,7 @@ function showTitle() {
 /* ---------------- 遊び方 ---------------- */
 function showHowto() {
   clearScreen();
+  Music.setMood('calm');
   const wrap = el('section', 'page howto-page');
   wrap.append(el('h2', '', '遊び方'));
   wrap.append(el('p', 'howto-lead', '7つの工程で日本刀を打ち、最後に鑑定を受けます。'));
@@ -97,8 +99,10 @@ function newGame() {
   runStage(0);
 }
 
+const STAGE_MOOD = { forge: 'forge', tsukuri: 'forge', shape: 'forge', clay: 'zen', quench: 'tense', polish: 'zen', mei: 'zen' };
 function runStage(i) {
   clearScreen();
+  Music.setMood(STAGE_MOOD[STAGES[i].id] || 'calm');
   renderHud(i);
   const s = STAGES[i];
   const card = el('section', 'intro');
@@ -220,6 +224,7 @@ function swordOptions(rec, x, y, length, width) {
 
 function showAppraisal() {
   clearScreen();
+  Music.setMood('finale');
   renderHud(STAGES.length);
   const r = computeResult(state);
   const rec = {
@@ -277,6 +282,7 @@ function showAppraisal() {
 /* ---------------- 蔵 ---------------- */
 function showKura() {
   clearScreen();
+  Music.setMood('calm');
   renderHud(-1);
   const wrap = el('section', 'page');
   wrap.append(el('h2', '', '蔵'));
@@ -315,7 +321,21 @@ document.getElementById('home').addEventListener('click', () => {
   state = null;
   showTitle();
 });
-window.addEventListener('pointerdown', () => Sound.init(), { once: true });
+const bgmBtn = document.getElementById('bgm');
+bgmBtn.textContent = Music.enabled ? 'BGM：入' : 'BGM：切';
+bgmBtn.addEventListener('click', () => {
+  Sound.init();
+  bgmBtn.textContent = Music.toggle() ? 'BGM：入' : 'BGM：切';
+});
+/* ブラウザの自動再生制限のため、最初の操作で音を開始する */
+const firstGesture = () => {
+  Sound.init();
+  if (Music.enabled) Music.start();
+  window.removeEventListener('pointerdown', firstGesture);
+  window.removeEventListener('keydown', firstGesture);
+};
+window.addEventListener('pointerdown', firstGesture);
+window.addEventListener('keydown', firstGesture);
 
 /* 背景の火の粉 */
 (function embers() {
