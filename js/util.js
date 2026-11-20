@@ -52,6 +52,13 @@ function makeCanvas(w, h, cls) {
   return [c, g];
 }
 
+/* キャンバスの表示幅に応じた拡大率（スマホで縮んだ文字を読める大きさに戻す） */
+function uiK(c, max = 2.2) {
+  const w = c.getBoundingClientRect().width || c.W;
+  return clamp(c.W / w * 0.85, 1, max);
+}
+const fs = (c, px, max) => Math.round(px * uiK(c, max));
+
 function canvasPos(c, e) {
   const r = c.getBoundingClientRect();
   return [(e.clientX - r.left) * c.W / r.width, (e.clientY - r.top) * c.H / r.height];
