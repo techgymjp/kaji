@@ -160,6 +160,14 @@ function makeParticles() {
         });
       }
     },
+    /* 酸化皮膜の破片（黒いかけら）がはがれて飛ぶ */
+    flake(x, y, n) {
+      for (let i = 0; i < n; i++) {
+        const a = rand(-Math.PI * 0.95, -Math.PI * 0.05), sp = rand(80, 320);
+        ps.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.5, 1.1), age: 0, type: 'flake',
+          size: rand(1.5, 4.5), rot: rand(0, TAU), vr: rand(-14, 14) });
+      }
+    },
     steam(x, y, n, spread = 120) {
       for (let i = 0; i < n; i++) {
         ps.push({
@@ -176,6 +184,8 @@ function makeParticles() {
         if (p.type === 'spark') {
           p.vy += 620 * dt; p.vx *= 0.985;
           p.T -= 700 * dt;
+        } else if (p.type === 'flake') {
+          p.vy += 700 * dt; p.vx *= 0.98; p.rot += p.vr * dt;
         } else {
           p.vy *= 0.985; p.vx += rand(-20, 20) * dt; p.size += 18 * dt;
         }
@@ -187,6 +197,15 @@ function makeParticles() {
       g.save();
       for (const p of ps) {
         const k = 1 - p.age / p.life;
+        if (p.type === 'flake') {
+          g.globalCompositeOperation = 'source-over';
+          g.save();
+          g.translate(p.x, p.y); g.rotate(p.rot);
+          g.fillStyle = `rgba(28,14,8,${0.9 * k})`;
+          g.fillRect(-p.size, -p.size * 0.4, p.size * 2, p.size * 0.8);
+          g.restore();
+          continue;
+        }
         if (p.type === 'spark') {
           g.globalCompositeOperation = 'lighter';
           g.strokeStyle = rgbStr(heatRGB(p.T), k);

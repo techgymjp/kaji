@@ -265,6 +265,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       Sound.clang(0.45 + q * 0.55, false);
       if (navigator.vibrate) { try { navigator.vibrate(q >= 0.65 ? 18 : 8); } catch (e) { /* 無視 */ } }
       parts.spark(x, y, Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
+      parts.flake(x, y, Math.round(3 + q * 7));
     }
     if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
     lastJudge = { text: q === 1 ? L('会心', 'Perfect') : q >= 0.65 ? L('良し', 'Good') : q > 0 ? L('ずれ', 'Off') : L('見逃し', 'Miss'), t: time, q };

@@ -4,6 +4,74 @@
  * 刀身を (t, v) 座標で表す: t = 0(区/はばき) → 1(切先)、v = 0(刃先) → 1(棟)。
  * 断面の稜（鎬）や地鉄・刃文・沸・匂・足を層ごとに描いて実物の質感に近づける。
  */
+/*
+ * 赤熱した鋼の表面用テクスチャ（タイル可能なフラクタル値ノイズ）。初回に一度だけ生成する。
+ *  dark：温度ムラの暗い部分 / light：熱い部分 / scale：酸化皮膜の黒い斑
+ */
+const HeatTex = (() => {
+  const S = 256;
+  let canv = null;
+  function fbm(seed, oct) {
+    const r = rng(seed), d = new Float32Array(S * S);
+    let amp = 1, tot = 0;
+    for (let o = 0; o < oct; o++) {
+      const grid = 4 << o, cell = S / grid;
+      const lat = new Float32Array(grid * grid);
+      for (let i = 0; i < lat.length; i++) lat[i] = r();
+      for (let yy = 0; yy < S; yy++) {
+        const gy = yy / cell, y0 = Math.floor(gy), fy = smooth(gy - y0);
+        const ya = (y0 % grid) * grid, yb = ((y0 + 1) % grid) * grid;
+        for (let xx = 0; xx < S; xx++) {
+          const gx = xx / cell, x0 = Math.floor(gx), fx = smooth(gx - x0);
+          const xa = x0 % grid, xb = (x0 + 1) % grid;
+          const v = lerp(lerp(lat[ya + xa], lat[ya + xb], fx), lerp(lat[yb + xa], lat[yb + xb], fx), fy);
+          d[yy * S + xx] += v * amp;
+        }
+      }
+      tot += amp; amp *= 0.55;
+    }
+    for (let i = 0; i < d.length; i++) d[i] /= tot;
+    return d;
+  }
+  function toCanvas(fn) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const cx = cv.getContext('2d');
+    const img = cx.createImageData(S, S);
+    for (let i = 0; i < S * S; i++) {
+      const [rr, gg, bb, aa] = fn(i);
+      img.data[i * 4] = rr; img.data[i * 4 + 1] = gg; img.data[i * 4 + 2] = bb; img.data[i * 4 + 3] = aa;
+    }
+    cx.putImageData(img, 0, 0);
+    return cv;
+  }
+  function build() {
+    const n1 = fbm(11, 5), n2 = fbm(29, 6), n3 = fbm(47, 3);
+    canv = {
+      dark: toCanvas(i => [20, 6, 2, clamp((0.52 - n1[i]) * 3.2, 0, 1) * 255]),
+      light: toCanvas(i => [255, 236, 190, clamp((n1[i] - 0.5) * 3.2, 0, 1) * 255]),
+      // 酸化皮膜：不規則な斑。縁はわずかに明るく浮く
+      scale: toCanvas(i => {
+        const v = n2[i] * 0.8 + n3[i] * 0.2;
+        const a = smooth(clamp((v - 0.53) / 0.08, 0, 1));
+        const edge = a > 0 && a < 0.5 ? 18 : 0;
+        return [26 + edge, 11 + edge * 0.4, 6, a * 235];
+      })
+    };
+  }
+  const cache = new WeakMap();
+  return {
+    pattern(ctx, kind, ox, oy, sc) {
+      if (!canv) build();
+      let m = cache.get(ctx);
+      if (!m) { m = {}; cache.set(ctx, m); }
+      const p = m[kind] || (m[kind] = ctx.createPattern(canv[kind], 'repeat'));
+      if (p.setTransform && typeof DOMMatrix !== 'undefined') p.setTransform(new DOMMatrix().translateSelf(-ox, -oy).scaleSelf(sc, sc));
+      return p;
+    }
+  };
+})();
+
 const Sword = (() => {
   const TK = 0.885;       // 横手（切先の始まり）
   const SHINOGI = 0.70;   // 鎬筋の位置
@@ -468,7 +536,10 @@ const Sword = (() => {
 
     ctx.save();
     ctx.fillStyle = rgbStr(c);
-    ctx.fill(path); // 下地
+    ctx.shadowColor = rgbStr(heatRGB(T + 60), 0.9 * gl);
+    ctx.shadowBlur = 14 * gl;
+    ctx.fill(path); // 下地（輪郭から光がにじむ）
+    ctx.shadowBlur = 0;
     ctx.clip(path);
     // 本体：中心が最も熱い
     const core = heatRGB(T + 50), rim = heatRGB(T - 280);
@@ -487,48 +558,41 @@ const Sword = (() => {
     gx.addColorStop(1, rgbStr(heatRGB(T - 260), 0.75));
     ctx.fillStyle = gx;
     ctx.fillRect(x - 2, y - 40, w + 4, h + 80);
-    // 揺らめく明暗（表面温度ムラ）
+    // 表面温度のムラ（雲状のノイズ）。ゆっくり流れて揺らめく
     const tm = opt.time || 0;
-    for (let i = 0; i < 14; i++) {
-      const px = x + r() * w, py = y + r() * h;
-      const fl = 0.5 + 0.5 * Math.sin(tm * (2 + r() * 3) + r() * 10);
-      const rad = 6 + r() * w * 0.12;
-      const gr = ctx.createRadialGradient(px, py, 0, px, py, rad);
-      gr.addColorStop(0, rgbStr(heatRGB(T + 90), 0.35 * fl * gl));
-      gr.addColorStop(1, rgbStr(c, 0));
-      ctx.fillStyle = gr;
-      ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
-    }
-    // 酸化スケール：温度が下がると黒く浮き、高温では溶けて見えにくい
-    const scaleA = clamp(1.0 - gl * 1.15, 0.05, 0.75);
-    const nScale = opt.scale ?? 60;
+    const ox = (seed * 53) % 256, oy = (seed * 97) % 256;
+    const amt = clamp((opt.scale ?? 60) / 100, 0.2, 1.3);
     ctx.save();
-    for (let i = 0; i < nScale * 0.25; i++) {          // 大きく薄い斑
-      const px = x + r() * w, py = y + r() * h;
-      ctx.fillStyle = `rgba(30,12,6,${scaleA * 0.35 * r()})`;
-      ctx.beginPath();
-      ctx.ellipse(px, py, 4 + r() * 14, 2 + r() * 5, r() * 0.4 - 0.2, 0, TAU);
-      ctx.fill();
-    }
+    ctx.globalAlpha = 0.16 + 0.3 * (1 - gl);
+    ctx.fillStyle = HeatTex.pattern(ctx, 'dark', ox + tm * 4, oy + tm * 1.5, 0.75);
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.22 * gl;
+    ctx.fillStyle = HeatTex.pattern(ctx, 'light', ox - tm * 6, oy + tm * 2, 0.75);
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     ctx.restore();
-    ctx.save();
-    for (let i = 0; i < nScale * 2; i++) {             // 細かな鱗片
-      const px = x + r() * w, py = y + r() * h;
-      const s = 0.5 + r() * 1.8;
-      ctx.fillStyle = r() < 0.8 ? `rgba(25,10,5,${scaleA * (0.25 + r() * 0.5)})` : rgbStr(heatRGB(T + 80), 0.5 * gl);
-      ctx.fillRect(px, py, s * (1 + r()), s);
+    // 酸化スケール（黒い膜）：冷えるほど浮き出て、沸くほど消える
+    const scaleA = clamp(1.05 - gl * 1.2, 0.04, 0.85) * amt;
+    if (scaleA > 0.02) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, scaleA);
+      ctx.fillStyle = HeatTex.pattern(ctx, 'scale', ox * 1.7, oy * 1.3, 0.6);
+      ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+      ctx.restore();
     }
-    ctx.restore();
-    // 層（折り返しの痕）
+    // 層（折り返しの痕）：細く波打つ線
     if (opt.layers) {
-      ctx.strokeStyle = `rgba(0,0,0,${0.12 + 0.2 * (1 - gl)})`;
-      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = `rgba(40,12,4,${0.08 + 0.16 * (1 - gl)})`;
+      ctx.lineWidth = 0.6;
       const n = Math.min(opt.layers, 12);
       for (let i = 1; i <= n; i++) {
-        const yy = y + h * i / (n + 1) + Math.sin(i * 7.1) * 1.5;
+        const yy = y + h * i / (n + 1);
         ctx.beginPath();
-        ctx.moveTo(x, yy);
-        for (let k = 1; k <= 10; k++) ctx.lineTo(x + w * k / 10, yy + Math.sin(k * 1.7 + i) * 1.2);
+        for (let k = 0; k <= 24; k++) {
+          const xx = x + w * k / 24;
+          const dy = Math.sin(k * 0.9 + i * 2.1) * 0.8 + Math.sin(k * 0.31 + i) * 1.2;
+          k ? ctx.lineTo(xx, yy + dy) : ctx.moveTo(xx, yy + dy);
+        }
         ctx.stroke();
       }
     }
@@ -579,20 +643,23 @@ const Sword = (() => {
       ctx.lineWidth = 0.8;
       ctx.stroke();
     }
-    // 炎
+    // 炎：柔らかな光の揺らめき
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 9; i++) {
-      const fx = x + w * (0.1 + 0.8 * r());
-      const fh = h * (0.6 + intensity * 1.6) * (0.5 + 0.5 * Math.sin(time * (6 + r() * 6) + i));
-      const fg = ctx.createLinearGradient(fx, y + h * 0.2, fx, y - fh);
-      fg.addColorStop(0, rgbStr(heatRGB(1100 + intensity * 200), 0.28));
+    for (let i = 0; i < 12; i++) {
+      const fx = x + w * (0.08 + 0.84 * r());
+      const ph = r() * 10, sp = 3 + r() * 4;
+      const fh = h * (0.5 + intensity * 1.4) * (0.6 + 0.4 * Math.sin(time * sp + ph));
+      const fw = 10 + r() * 16;
+      const cy = y + h * 0.15 - fh * 0.45;
+      const sway = Math.sin(time * (2 + r() * 2) + ph) * 5;
+      const fg = ctx.createRadialGradient(fx + sway, cy + fh * 0.25, 1, fx + sway, cy, fh * 0.6);
+      fg.addColorStop(0, rgbStr(heatRGB(1150 + intensity * 200), 0.22));
+      fg.addColorStop(0.5, rgbStr(heatRGB(1000), 0.08));
       fg.addColorStop(1, 'rgba(255,80,10,0)');
       ctx.fillStyle = fg;
       ctx.beginPath();
-      ctx.moveTo(fx - 12, y + h * 0.2);
-      ctx.quadraticCurveTo(fx + Math.sin(time * 4 + i) * 10, y - fh * 0.5, fx + Math.sin(time * 7 + i) * 6, y - fh);
-      ctx.quadraticCurveTo(fx + 4, y - fh * 0.4, fx + 12, y + h * 0.2);
+      ctx.ellipse(fx + sway, cy, fw, fh * 0.6, 0, 0, TAU);
       ctx.fill();
     }
     ctx.restore();
