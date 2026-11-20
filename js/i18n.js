@@ -34,6 +34,8 @@ const TERM_EN = {
   '甲伏せ': 'Kobuse', '本三枚': 'Honsanmai', '丸鍛え': 'Maru-gitae',
   '最上大業物': 'Saijō Ō-Wazamono', '大業物': 'Ō-Wazamono', '良業物': 'Yoki-Wazamono',
   '業物': 'Wazamono', '数打物': 'Kazuuchi-mono', '鈍刀': 'Namakura',
-  '無名': 'Nameless'
+  '無名': 'Nameless',
+  '月影': 'Tsukikage', '村雨': 'Murasame', '朧月': 'Oborozuki', '白露': 'Shiratsuyu', '霞': 'Kasumi', '春雷': 'Shunrai',
+  '時雨': 'Shigure', '夕凪': 'Yūnagi', '東雲': 'Shinonome', '青嵐': 'Seiran', '初霜': 'Hatsushimo', '緋桜': 'Hizakura'
 };
 const term = s => (EN && s ? (TERM_EN[s] || s) : s);

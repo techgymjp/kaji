@@ -50,1127 +50,7 @@ function drawSmithy(g, W, H, light = 0.5, anvilX = 470) {
   g.fillRect(ax - 10, H * 0.72 + 30, 220, H * 0.28 - 30);
 }
 
-/* ============================================================
- * 一、積み沸かし・折り返し鍛錬
- *  1周 = 藁灰・泥水 → 沸かし（沸き花を見る）→ 鍛打（師匠の小槌に合わせて不純物を叩き出す）
- *        → 鏨で切れ目を入れて折り返す（縦／横）
- * ============================================================ */
-function stageForge({ root, scope, state, finish }) {
-  const ui = stageLayout(root, '');
-  const [c, g] = makeCanvas(860, 420);
-  c.style.touchAction = 'none';
-  ui.view.append(c);
-  const W = c.W, H = c.H;
-  const parts = makeParticles();
 
-  const MIN_FOLDS = 6, MAX_FOLDS = 15;
-  let purity = 0.44;
-  let carbon = 1.12 + Math.random() * 0.05;
-  let folds = 0;
-  const dirs = [];
-  let T = 650;
-  let phase = 'coat';        // coat | coating | heat | strike | cut | fold | choice | done
-  let coated = false, coatAnim = 0, coatLayer = 0;
-  let blowing = false, blowTimer = 0, heatQ = 0;
-  let time = 0, msg = '', msgT = 0, shake = 0;
-  let combo = 0, maxCombo = 0;
-  const accs = [];
-  const stars = [];            // 沸き花
-  let mouse = [W / 2, H / 2];
-
-  // 鍛打フェーズの状態
-  const BX = 230, BY = 150, BW = 400, BH = 130;   // 上から見た鋼の位置
-  let slag = [], initialSlag = 0, beat = 0.8, nextBeat = 0, target = null, targetAt = 0, hits = [];
-  let hammerFx = null, masterFx = 0;
-  // 鏨フェーズ
-  let cutPos = 0, cutT = 0, cutQ = 0, foldDir = '';
-  let foldAnim = 0;
-
-  const say = (s, d = 1.2) => { msg = s; msgT = d; };
-
-  // ---------- 操作
-  const coatBtn = btn(L('藁灰と泥水をかける', 'Coat with Ash & Clay'), 'primary', () => coat(true));
-  const skipBtn = btn(L('そのまま沸かす', 'Heat Uncoated'), '', () => coat(false));
-  const blowBtn = btn(L('ふいごを吹く（長押し）', 'Pump Bellows (hold)'), 'primary hold');
-  const takeBtn = btn(L('取り出す', 'Take Out'), '', () => takeOut());
-  const tateBtn = btn(L('縦に折り返す', 'Fold Lengthwise'), 'primary', () => cut('縦'));
-  const yokoBtn = btn(L('横に折り返す', 'Fold Crosswise'), 'primary', () => cut('横'));
-  const moreBtn = btn(L('さらに折り返す', 'Fold Again'), 'primary', () => { phase = 'coat'; renderControls(); });
-  const endBtn = btn(L('鍛錬を終える', 'Finish Forging'), '', () => end());
-  const startBlow = e => { e && e.preventDefault(); if (phase === 'heat') { blowing = true; Sound.init(); } };
-  const stopBlow = () => { blowing = false; };
-  scope.on(blowBtn, 'pointerdown', startBlow);
-  scope.on(blowBtn, 'pointerup', stopBlow);
-  scope.on(blowBtn, 'pointerleave', stopBlow);
-  scope.on(blowBtn, 'pointercancel', stopBlow);
-  scope.on(c, 'pointermove', e => { mouse = canvasPos(c, e); });
-  scope.on(c, 'pointerdown', e => { mouse = canvasPos(c, e); if (phase === 'strike') strike(mouse[0], mouse[1]); });
-  scope.on(window, 'keydown', e => {
-    if (e.code === 'Space') {
-      e.preventDefault();
-      if (e.repeat) return;
-      if (phase === 'heat') startBlow();
-      else if (phase === 'strike') strike(mouse[0], mouse[1]);
-    } else if (e.code === 'Enter') {
-      e.preventDefault();
-      if (phase === 'heat') takeOut();
-      else if (phase === 'coat') coat(true);
-    } else if (phase === 'cut' && (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q')) cut('縦');
-    else if (phase === 'cut' && (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E')) cut('横');
-  });
-  scope.on(window, 'keyup', e => { if (e.code === 'Space') stopBlow(); });
-
-  const HINTS = {
-    coat: L('<strong>藁灰と泥水</strong>で酸化を防ぐ<span class="keys">（<kbd>Enter</kbd>）</span>', 'Coat with <strong>straw ash & clay</strong> to prevent oxidation<span class="keys"> (<kbd>Enter</kbd>)</span>'),
-    heat: L('長押しで加熱。<strong>沸き花</strong>が弾けたら取り出す<span class="keys">（<kbd>Space</kbd>長押し／<kbd>Enter</kbd>）</span>', 'Hold to heat. Take it out when <strong>star sparks</strong> burst<span class="keys"> (hold <kbd>Space</kbd> / <kbd>Enter</kbd>)</span>'),
-    strike: L('<strong>輪が閉じた瞬間</strong>に、その場所を打て', 'Strike the spot <strong>the moment the ring closes</strong>'),
-    cut: L('鏨が<strong>中央</strong>に来たら、縦か横に折る<span class="keys">（<kbd>←</kbd>縦／<kbd>→</kbd>横）</span>', 'When the chisel hits the <strong>center</strong>, choose a fold<span class="keys"> (<kbd>←</kbd> / <kbd>→</kbd>)</span>'),
-    choice: L(`続けるか、終えるか（炭素 <strong>0.6〜0.75%</strong> が目安）`, `Keep folding or finish? (aim for <strong>0.6–0.75%</strong> carbon)`)
-  };
-
-  function renderControls() {
-    ui.controls.innerHTML = '';
-    ui.hint.innerHTML = HINTS[phase] || ui.hint.innerHTML;
-    if (phase === 'coat') ui.controls.append(coatBtn, skipBtn);
-    else if (phase === 'heat') ui.controls.append(blowBtn, takeBtn);
-    else if (phase === 'cut') ui.controls.append(tateBtn, yokoBtn);
-    else if (phase === 'choice') {
-      ui.controls.append(moreBtn, endBtn);
-      moreBtn.disabled = folds >= MAX_FOLDS;
-    }
-  }
-
-  function coat(yes) {
-    if (phase !== 'coat') return;
-    coated = yes;
-    if (yes) { phase = 'coating'; coatAnim = 0; Sound.sizzle(0.8); renderControls(); }
-    else { coatLayer = 0; phase = 'heat'; renderControls(); }
-  }
-
-  function takeOut() {
-    if (phase !== 'heat') return;
-    if (T < 950) { say(L('まだ沸いていない！沸き花を待て', 'Not hot enough! Wait for the sparks')); return; }
-    blowing = false;
-    heatQ = clamp(1 - Math.abs(T - 1320) / 170, 0, 1);
-    say(T > 1440 ? L('沸かしすぎ…鋼が焼けた', 'Overheated… the steel burned') : heatQ > 0.75 ? L('良い沸き！', 'Perfect heat!') : T < 1220 ? L('沸きが足りない', 'Not hot enough') : L('まずまず', 'Not bad'), 1.2);
-    Sound.thud();
-    startStrike();
-  }
-
-  function startStrike() {
-    phase = 'strike';
-    // 純度が低いほどノロが多い
-    const n = Math.round(5 + (1 - purity) * 12);
-    slag = [];
-    for (let i = 0; i < n; i++) {
-      let x, y, ok = false, tries = 0;
-      while (!ok && tries++ < 40) {
-        x = BX + 30 + Math.random() * (BW - 60);
-        y = BY + 22 + Math.random() * (BH - 44);
-        ok = slag.every(s => Math.hypot(s.x - x, s.y - y) > 42);
-      }
-      slag.push({ x, y, r: rand(9, 16), hp: 1, blister: false, seed: Math.random() * 1000 });
-    }
-    if (Math.random() < 0.35 && slag.length) {           // ふくれ（気泡）
-      const b = slag[Math.floor(Math.random() * slag.length)];
-      b.blister = true; b.r = 20; b.hp = 1.6;
-    }
-    initialSlag = slag.reduce((a, s) => a + s.hp, 0);
-    beat = 60 / (84 + folds * 7);                          // 折るほどテンポが上がる
-    nextBeat = time + 0.6;
-    target = null;
-    hits = [];
-    renderControls();
-  }
-
-  function pickTarget() {
-    const alive = slag.filter(s => s.hp > 0);
-    if (!alive.length) return null;
-    // ふくれを優先、それ以外は近いものから
-    const bl = alive.find(s => s.blister);
-    if (bl && Math.random() < 0.6) return bl;
-    if (target) alive.sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y));
-    return alive[Math.min(alive.length - 1, Math.floor(Math.random() * 2))];
-  }
-
-  function strike(x, y) {
-    if (phase !== 'strike' || (hammerFx && hammerFx.t < 0.12)) return;
-    const heatPow = clamp((T - 800) / 450, 0.15, 1) * (0.55 + 0.45 * heatQ);
-    let q = 0.15, label = L('外した…', 'Missed…');
-    let hitSlag = null;
-    if (target && target.hp > 0 && Math.hypot(x - target.x, y - target.y) < target.r + 16) {
-      const dt = Math.abs(time - targetAt);
-      if (dt < 0.075) { q = 1; label = L('会心！', 'Perfect!'); }
-      else if (dt < 0.17) { q = 0.65; label = L('良し', 'Good'); }
-      else { q = 0.3; label = L('拍子がずれた', 'Off beat'); }
-      hitSlag = target;
-    } else {
-      hitSlag = slag.find(s => s.hp > 0 && Math.hypot(x - s.x, y - s.y) < s.r + 10);
-      if (hitSlag) { q = 0.3; label = L('師匠の指示と違う所だ', 'Wrong spot!'); }
-    }
-    if (hitSlag) {
-      hitSlag.hp -= q * heatPow * 1.15;
-      if (hitSlag.hp <= 0.05) {
-        hitSlag.hp = 0;
-        parts.spark(hitSlag.x, hitSlag.y, Math.round(30 + 30 * q), { T: T + 120, min: 200, max: 700, life: 1.1 });
-        if (hitSlag.blister) { label = L('ふくれを潰した！', 'Blister crushed!'); Sound.crack(); }
-      }
-    }
-    if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
-    accs.push(q);
-    if (hitSlag === target) target = null;
-    hammerFx = { x, y, t: 0, q };
-    shake = 3 + q * 6;
-    T -= 7;
-    Sound.clang(0.5 + q * 0.5, T < 950);
-    parts.spark(x, y, Math.round(8 + q * 22 * heatGlow(T)), { T: T + 80 });
-    say(combo >= 3 && q >= 0.65 ? `${label}　${combo}${L('連', ' combo')}` : label, 0.6);
-  }
-
-  function endStrike() {
-    const removed = 1 - slag.reduce((a, s) => a + s.hp, 0) / initialSlag;
-    const leftBlister = slag.some(s => s.blister && s.hp > 0);
-    const acc = accs.length ? accs.slice(-12).reduce((a, b) => a + b, 0) / Math.min(12, accs.length) : 0;
-    const gain = (0.65 * removed + 0.35 * acc) * (coated ? 1 : 0.85);
-    purity += (1 - purity) * 0.24 * gain;
-    if (leftBlister) { purity -= 0.02; say(L('ふくれが残った…', 'A blister remains…'), 1.2); }
-    else say(removed > 0.95 ? L('ノロを叩き出した！', 'Slag cleared!') : removed > 0.6 ? L('まずまず叩き出せた', 'Most slag removed') : L('ノロが残っている…', 'Slag remains…'), 1.2);
-    purity = clamp(purity, 0.3, 0.995);
-    phase = 'cut';
-    cutT = Math.random() * 2;
-    scope.timeout(renderControls, 10);
-    renderControls();
-  }
-
-  function cut(dir) {
-    if (phase !== 'cut') return;
-    cutQ = clamp(1 - Math.abs(cutPos - 0.5) / 0.22, 0, 1);
-    foldDir = dir;
-    dirs.push(dir);
-    if (cutQ < 0.5) { purity -= 0.012 * (1 - cutQ); say(L('切れ目が偏った…層が乱れる', 'Off-center cut… uneven layers'), 1.2); }
-    else say(cutQ > 0.85 ? L('ぴたり中央！', 'Dead center!') : L('良し', 'Good'), 0.9);
-    Sound.chisel(); scope.timeout(() => Sound.chisel(), 120);
-    carbon -= 0.042;
-    folds++;
-    phase = 'fold';
-    foldAnim = 0;
-    renderControls();
-  }
-
-  function grainOf() {
-    if (dirs.length < 2) return 'itame';
-    let ch = 0;
-    for (let i = 1; i < dirs.length; i++) if (dirs[i] !== dirs[i - 1]) ch++;
-    const r = ch / (dirs.length - 1);
-    return r >= 0.7 ? 'itame' : r <= 0.25 ? 'masame' : 'mokume';
-  }
-  const GRAIN_NAME = { itame: '板目肌', masame: '柾目肌', mokume: '杢目肌' };
-
-  function end() {
-    if (phase === 'done') return;
-    phase = 'done';
-    Sound.stopLoops();
-    const carbonScore = clamp(1 - Math.abs(carbon - 0.68) / 0.3, 0, 1);
-    const comboBonus = Math.min(10, maxCombo);
-    const score = Math.round(clamp((purity - 0.45) / 0.5 * 70 + carbonScore * 20 + comboBonus, 0, 100));
-    state.folds = folds;
-    state.purity = purity;
-    state.carbon = carbon;
-    state.grain = grainOf();
-    state.grainName = GRAIN_NAME[state.grain];
-    finish(score,
-      L(`${folds}回折り返し、${(2 ** folds).toLocaleString()}層の鋼となった。地鉄は<strong>${state.grainName}</strong>。炭素量 約${carbon.toFixed(2)}%、最大${maxCombo}連打。`,
-        `Folded ${folds} times into ${(2 ** folds).toLocaleString()} layers, with <strong>${term(state.grainName)}</strong>. Carbon ~${carbon.toFixed(2)}%, best combo ${maxCombo}. `) +
-      (carbon > 0.8 ? L('炭素が多く硬いが、脆さが残る。', 'High carbon: hard but brittle.') : carbon < 0.5 ? L('炭素が抜けすぎ、粘るが刃が甘い。', 'Too little carbon: tough but a soft edge.') : L('硬さと粘りの釣り合いが良い。', 'A good balance of hardness and toughness.')));
-  }
-
-  renderControls();
-
-  // ---------- 描画ヘルパ
-  function drawForgeScene(inFire) {
-    drawSmithy(g, W, H, heatGlow(T), 470);
-    g.fillStyle = '#2b1c14'; g.fillRect(40, H * 0.72 - 40, 240, 70);
-    g.fillStyle = '#3a271b'; g.fillRect(30, H * 0.72 - 50, 260, 14);
-    Sword.drawCoals(g, 55, H * 0.72 - 70, 210, 50, inFire ? (blowing ? 1 : 0.35) : 0.2, time);
-    const bx = inFire ? 85 : 500, by = inFire ? H * 0.72 - 78 : H * 0.72 - 50 - 36;
-    Sword.drawHotBar(g, bx, by, 150, 36, T, { seed: 17 + folds, time, layers: folds, scale: 50 });
-    if (coatLayer > 0) {                           // 泥と藁灰の被膜
-      g.save();
-      g.fillStyle = `rgba(110,100,88,${0.75 * coatLayer})`;
-      g.fillRect(bx, by, 150, 36);
-      const r = rng(5 + folds);
-      for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(${r() > 0.5 ? '160,150,135' : '60,52,45'},${coatLayer * 0.8})`; g.fillRect(bx + r() * 148, by + r() * 34, 2, 2); }
-      g.restore();
-    }
-    if (inFire) Sword.drawCoals(g, 55, H * 0.72 - 50, 210, 26, blowing ? 1 : 0.35, time + 3, 21);
-    // 水桶
-    g.fillStyle = '#2a1c12'; g.fillRect(330, H * 0.72 - 30, 90, 60);
-    g.fillStyle = 'rgba(70,60,50,0.9)'; g.fillRect(336, H * 0.72 - 26, 78, 10);
-  }
-
-  function drawThermo() {
-    const gx = W - 46, gy = 40, gh = 250;
-    g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(gx - 6, gy - 6, 30, gh + 12);
-    for (let i = 0; i < gh; i++) { g.fillStyle = rgbStr(heatRGB(1550 - (i / gh) * 1050)); g.fillRect(gx, gy + i, 18, 1); }
-    const yOf = tt => gy + (1550 - tt) / 1050 * gh;
-    g.strokeStyle = '#e8c66c'; g.lineWidth = 2; g.strokeRect(gx - 3, yOf(1390), 24, yOf(1250) - yOf(1390));
-    g.fillStyle = 'rgba(200,40,30,0.6)'; g.fillRect(gx - 3, yOf(1550), 4, yOf(1440) - yOf(1550));
-    const ty = yOf(clamp(T, 500, 1550));
-    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(gx - 5, ty); g.lineTo(gx - 14, ty - 6); g.lineTo(gx - 14, ty + 6); g.fill();
-  }
-
-  function drawStars(dt) {
-    for (let i = stars.length - 1; i >= 0; i--) {
-      const s = stars[i];
-      s.age += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 200 * dt;
-      if (s.age > s.life) { stars.splice(i, 1); continue; }
-      const k = 1 - s.age / s.life;
-      g.save();
-      g.globalCompositeOperation = 'lighter';
-      g.strokeStyle = `rgba(255,250,225,${k})`;
-      g.shadowColor = 'rgba(255,220,150,0.9)';
-      g.shadowBlur = 8;
-      g.lineWidth = 1.6;
-      const burst = s.age > s.life * 0.35;             // 途中で枝分かれ（沸き花の特徴）
-      const L = burst ? s.size * (1 + (s.age / s.life) * 2) : s.size * 0.4;
-      g.beginPath();
-      for (let a = 0; a < (burst ? 6 : 2); a++) {
-        const ang = a * Math.PI / (burst ? 3 : 1) + s.rot;
-        g.moveTo(s.x, s.y); g.lineTo(s.x + Math.cos(ang) * L, s.y + Math.sin(ang) * L);
-      }
-      g.stroke();
-      g.restore();
-    }
-  }
-
-  // 上から見た鋼（鍛打）
-  function drawStrikeScene() {
-    const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, '#0f0a08'); bg.addColorStop(1, '#1a120d');
-    g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    // 金床の天面
-    const ag = g.createLinearGradient(0, BY - 50, 0, BY + BH + 50);
-    ag.addColorStop(0, '#3e4046'); ag.addColorStop(0.5, '#26272c'); ag.addColorStop(1, '#17181b');
-    g.fillStyle = ag; g.fillRect(BX - 70, BY - 45, BW + 140, BH + 90);
-    g.strokeStyle = 'rgba(255,255,255,0.08)'; g.strokeRect(BX - 70, BY - 45, BW + 140, BH + 90);
-    // 鋼（徐々に延びる）
-    Sword.drawHotBar(g, BX, BY, BW, BH, T, { seed: 300 + folds, time, scale: 120, layers: 0 });
-    // ノロ
-    for (const s of slag) {
-      if (s.hp <= 0) continue;
-      const a = clamp(s.hp, 0.25, 1);
-      if (s.blister) {
-        const gr = g.createRadialGradient(s.x - 5, s.y - 6, 2, s.x, s.y, s.r);
-        gr.addColorStop(0, rgbStr(heatRGB(T + 150), 0.95));
-        gr.addColorStop(0.7, rgbStr(heatRGB(T - 60), 0.9));
-        gr.addColorStop(1, rgbStr(heatRGB(T - 300), 0.9));
-        g.fillStyle = gr;
-        g.beginPath(); g.arc(s.x, s.y, s.r * (0.6 + 0.4 * a), 0, TAU); g.fill();
-        g.strokeStyle = 'rgba(40,10,0,0.6)'; g.stroke();
-      } else {
-        const r = rng(Math.floor(s.seed));
-        g.fillStyle = `rgba(18,8,4,${0.85 * a})`;
-        g.beginPath();
-        for (let i = 0; i < 9; i++) {
-          const ang = i / 9 * TAU, rr = s.r * (0.6 + 0.5 * r()) * (0.5 + 0.5 * a);
-          i ? g.lineTo(s.x + Math.cos(ang) * rr, s.y + Math.sin(ang) * rr * 0.8) : g.moveTo(s.x + rr, s.y);
-        }
-        g.closePath(); g.fill();
-        g.fillStyle = `rgba(90,60,40,${0.5 * a})`;
-        g.beginPath(); g.arc(s.x - 2, s.y - 2, s.r * 0.25, 0, TAU); g.fill();
-      }
-    }
-    // 師匠の小槌と合図の輪
-    if (target && target.hp > 0) {
-      const k = clamp((targetAt - time) / beat, 0, 1);
-      const rad = target.r + 8 + k * 60;
-      g.strokeStyle = `rgba(255,214,120,${0.4 + 0.6 * (1 - k)})`;
-      g.lineWidth = 3;
-      g.beginPath(); g.arc(target.x, target.y, rad, 0, TAU); g.stroke();
-      g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5;
-      g.beginPath(); g.arc(target.x, target.y, target.r + 8, 0, TAU); g.stroke();
-    }
-    if (masterFx > 0 && target) {
-      // 小槌（横座の手槌）
-      const lift = masterFx;
-      g.save();
-      g.translate(target.x + 30, target.y - 30 - lift * 30);
-      g.rotate(-0.6);
-      g.fillStyle = '#4a3220'; g.fillRect(8, -3, 70, 6);
-      g.fillStyle = '#5c5e64'; g.fillRect(-10, -9, 20, 18);
-      g.restore();
-    }
-    // 大鎚の照準
-    if (phase === 'strike') {
-      g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1.5;
-      g.beginPath(); g.arc(mouse[0], mouse[1], 22, 0, TAU); g.stroke();
-    }
-    // 打撃の跡
-    if (hammerFx && hammerFx.t < 0.35) {
-      const k = hammerFx.t / 0.35;
-      g.save();
-      g.globalCompositeOperation = 'lighter';
-      g.fillStyle = rgbStr(heatRGB(T + 200), (1 - k) * 0.6);
-      g.beginPath(); g.arc(hammerFx.x, hammerFx.y, 20 + k * 30, 0, TAU); g.fill();
-      g.restore();
-      if (k < 0.3) {
-        const hg = g.createRadialGradient(hammerFx.x - 8, hammerFx.y - 8, 2, hammerFx.x, hammerFx.y, 28);
-        hg.addColorStop(0, '#6a6c72'); hg.addColorStop(1, '#16171a');
-        g.fillStyle = hg;
-        g.beginPath(); g.arc(hammerFx.x, hammerFx.y, 26, 0, TAU); g.fill();
-      }
-    }
-    if (combo >= 2) {
-      g.font = `bold ${fs(c, 24, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
-      g.fillText(`${combo} ${L('連', 'combo')}`, 30, 30 + fs(c, 24, 1.8));
-    }
-  }
-
-  // 横から見た鋼と鏨（切れ目入れ）
-  function drawCutScene() {
-    drawSmithy(g, W, H, heatGlow(T), -400);
-    const ax = 130, aw = 600, ay = H * 0.72 - 20;
-    const ag = g.createLinearGradient(0, ay, 0, ay + 26);
-    ag.addColorStop(0, '#55575e'); ag.addColorStop(0.2, '#26272c'); ag.addColorStop(1, '#111215');
-    g.fillStyle = ag; g.fillRect(ax - 20, ay, aw + 40, 26);
-    const bx = 220, bw = 420, bh = 34, by = ay - bh;
-    Sword.drawHotBar(g, bx, by, bw, bh, T, { seed: 40 + folds, time, layers: folds, scale: 60 });
-    // 中央の目印（師匠が付けた墨）
-    g.strokeStyle = 'rgba(255,255,255,0.25)'; g.setLineDash([3, 4]);
-    g.beginPath(); g.moveTo(bx + bw / 2, by - 60); g.lineTo(bx + bw / 2, by + bh); g.stroke(); g.setLineDash([]);
-    if (phase === 'cut') {
-      const x = bx + cutPos * bw;
-      // 鏨
-      g.fillStyle = '#4a4c52';
-      g.beginPath(); g.moveTo(x - 7, by - 90); g.lineTo(x + 7, by - 90); g.lineTo(x + 3, by - 6); g.lineTo(x, by); g.lineTo(x - 3, by - 6); g.closePath(); g.fill();
-      g.fillStyle = '#6a6c72'; g.fillRect(x - 9, by - 110, 18, 22);
-      g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(bx, by + bh + 40, bw, 8);
-      g.fillStyle = 'rgba(232,198,108,0.7)'; g.fillRect(bx + bw * 0.45, by + bh + 40, bw * 0.1, 8);
-      g.fillStyle = '#fff'; g.fillRect(x - 1.5, by + bh + 36, 3, 16);
-    }
-  }
-
-  // ---------- ループ
-  scope.loop(dt => {
-    time += dt;
-    msgT -= dt;
-    shake = Math.max(0, shake - dt * 30);
-    masterFx = Math.max(0, masterFx - dt * 5);
-    if (hammerFx) hammerFx.t += dt;
-    parts.update(dt);
-
-    if (phase === 'coating') {
-      coatAnim += dt / 0.9;
-      coatLayer = Math.min(1, coatAnim);
-      if (Math.random() < dt * 40) parts.steam(575, H * 0.72 - 90, 1, 70);
-      if (coatAnim >= 1) { phase = 'heat'; renderControls(); }
-    } else if (phase === 'heat') {
-      if (blowing) {
-        T += (190 + Math.max(0, 1300 - T) * 0.12) * dt;
-        blowTimer -= dt;
-        if (blowTimer <= 0) { Sound.whoosh(); blowTimer = 0.5; }
-      } else T += (T < 950 ? 25 : -35) * dt;
-      T = Math.min(T, 1560);
-      coatLayer = Math.max(0, coatLayer - dt * 0.15);
-      Sound.fire(blowing ? 0.9 : 0.4);
-      if (!coated && T > 1000) { carbon -= 0.012 * dt; purity -= 0.004 * dt; }   // 酸化
-      if (T > 1440) {
-        purity -= 0.04 * dt; carbon -= 0.025 * dt;
-        if (Math.random() < dt * 25) parts.spark(150 + rand(-50, 50), H * 0.72 - 70, 2, { T: 1500, angle: -Math.PI / 2, spread: 0.6, min: 200, max: 500 });
-      }
-      // 沸き花：適温で星のように弾ける火花
-      const wakiRate = T > 1220 ? clamp((T - 1220) / 90, 0, 1) * 30 : 0;
-      let nSpawn = 0;
-      while (Math.random() < dt * wakiRate && nSpawn++ < 3) {
-        stars.push({ x: 160 + rand(-70, 70), y: H * 0.72 - 76, vx: rand(-90, 90), vy: rand(-320, -170), age: 0, life: rand(0.45, 0.9), size: rand(7, 13), rot: Math.random() * 3 });
-        if (Math.random() < 0.5) Sound.chisel();
-      }
-    } else if (phase === 'strike') {
-      Sound.fire(0.15);
-      T -= 17 * dt;
-      // 師匠の拍子：一拍目に小槌で場所を示し、次の拍で打つ
-      if (time >= nextBeat) {
-        nextBeat += beat;
-        if (target && target.hp > 0 && time > targetAt + 0.2) { combo = 0; accs.push(0); target = null; say(L('打ち逃した', 'Too late'), 0.5); }
-        if (!target) {
-          target = pickTarget();
-          if (target) { targetAt = time + beat; masterFx = 1; Sound.tick(); }
-        }
-      }
-      const remaining = slag.some(s => s.hp > 0);
-      if (!remaining || T < 860) {
-        if (!remaining) say(L('すべてのノロを叩き出した！', 'All slag cleared!'), 1.2);
-        else say(L('鋼が冷えた', 'The steel has cooled'), 1);
-        phase = 'cutwait';
-        scope.timeout(endStrike, 600);
-      }
-    } else if (phase === 'cut') {
-      cutT += dt * (0.7 + folds * 0.05);
-      const f = cutT % 2;
-      cutPos = 0.15 + 0.7 * (f < 1 ? f : 2 - f);
-    } else if (phase === 'fold') {
-      foldAnim += dt / 1.1;
-      if (foldAnim >= 1) {
-        if (folds >= MAX_FOLDS) { phase = 'choice'; end(); }
-        else if (folds >= MIN_FOLDS) { phase = 'choice'; renderControls(); }
-        else { phase = 'coat'; renderControls(); }
-      }
-    }
-    if (phase !== 'heat' && phase !== 'strike') T = Math.max(T - 12 * dt, 650);
-
-    // ---- 描画
-    g.save();
-    if (shake > 0) g.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
-    if (phase === 'strike' || phase === 'cutwait') drawStrikeScene();
-    else if (phase === 'cut') drawCutScene();
-    else if (phase === 'fold') {
-      drawSmithy(g, W, H, heatGlow(T), 470);
-      const s = Math.sin(foldAnim * Math.PI);
-      const bw = 150 * (1 - 0.48 * s), bh = 34 * (1 + 0.9 * s);
-      const by = H * 0.72 - 50 - 34 - (bh - 34), bx = 500 + (150 - bw) / 2;
-      Sword.drawHotBar(g, bx, by, bw, bh, T, { seed: 17 + folds, time, layers: folds, scale: 40 });
-      g.font = `bold ${fs(c, 30, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe9c4';
-      g.fillText(L(`${foldDir}に折り返し　${folds} 回目`, `${foldDir === '縦' ? 'Lengthwise' : 'Crosswise'} fold #${folds}`), 575, 120);
-      g.font = `${fs(c, 21)}px serif`; g.fillStyle = '#d8c8a8';
-      g.fillText(`${(2 ** folds).toLocaleString()} ${L('層', 'layers')}`, 575, 152);
-    } else {
-      drawForgeScene(phase === 'heat');
-      drawThermo();
-      if (phase === 'heat' && T > 1440) {
-        g.font = `bold ${fs(c, 20, 1.6)}px serif`; g.fillStyle = '#ff6a50'; g.textAlign = 'center';
-        g.fillText(L('焼けすぎ！ 鋼が燃えている', 'Too hot! The steel is burning'), 170, 60);
-      }
-      if (phase === 'coat' || phase === 'coating') {
-        g.font = `${fs(c, 18)}px serif`; g.fillStyle = '#c9b89a'; g.textAlign = 'center';
-        g.fillText(L('藁灰・泥水', 'Ash & clay'), 375, H * 0.72 + 50);
-      }
-    }
-    drawStars(dt);
-    parts.draw(g);
-    if (msgT > 0) {
-      g.font = `bold ${fs(c, 26, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';
-      g.fillStyle = `rgba(255,236,200,${clamp(msgT * 2, 0, 1)})`;
-      g.fillText(msg, W / 2, phase === 'strike' || phase === 'cutwait' ? H - 40 : 100);
-    }
-    g.restore();
-
-    if (phase === 'strike' || phase === 'cutwait') {
-      const ph = clamp(1 - (nextBeat - time) / beat, 0, 1);
-      ui.status.innerHTML =
-        `<div class="stat"><span>${L('拍子', 'Beat')}</span><i class="beat" style="opacity:${0.25 + 0.75 * ph};transform:scale(${0.7 + 0.5 * ph})"></i></div>` +
-        `<div class="meter heat"><span>${L('鋼の熱', 'Heat')}</span><i><b style="width:${clamp((T - 860) / 460, 0, 1) * 100}%;background:${rgbStr(heatRGB(T))}"></b></i></div>` +
-        `<div class="stat"><span>${L('連打', 'Combo')}</span><b>${combo}</b></div>`;
-    } else {
-      ui.status.innerHTML =
-        `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}</b>${L('回', '')}</div>` +
-        meter(L('純度', 'Purity'), (purity - 0.3) / 0.7) +
-        `<div class="stat"><span>${L('炭素', 'Carbon')}</span><b>${carbon.toFixed(2)}</b>%</div>` +
-        `<div class="stat"><span>${L('地鉄', 'Grain')}</span><b>${dirs.length ? term(GRAIN_NAME[grainOf()]).replace(' grain', '') : '―'}</b></div>`;
-    }
-  });
-}
-
-/* ============================================================
- * 二、造り込み（皮鉄と心鉄の組み合わせ・沸かし付け）
- * ============================================================ */
-const TSUKURI_METHODS = {
-  kobuse: {
-    name: '甲伏せ', yomi: L('こうぶせ', 'Kobuse'),
-    desc: L('U字に曲げた硬い<strong>皮鉄</strong>で、柔らかい<strong>心鉄</strong>を包む。最も広く用いられた造り込み。', 'Hard <strong>skin steel</strong> bent into a U wraps a soft <strong>core steel</strong>. The most common method.'),
-    pieces: ['shin'], tol: 30, mult: 1, tough: 1
-  },
-  sanmai: {
-    name: '本三枚', yomi: L('ほんさんまい', 'Honsanmai'),
-    desc: L('左右の<strong>皮鉄</strong>で挟み、刃に<strong>刃鉄</strong>、中に<strong>心鉄</strong>を据える。組むのは難しいが、強く粘る刀になる。', '<strong>Skin steel</strong> on both sides, <strong>edge steel</strong> below, <strong>core steel</strong> inside. Harder to assemble, but very tough.'),
-    pieces: ['ha', 'shin'], tol: 22, mult: 1.08, tough: 1.05
-  },
-  maru: {
-    name: '丸鍛え', yomi: L('まるぎたえ', 'Maru-gitae'),
-    desc: L('心鉄を入れず、一種類の鋼だけで鍛える古い造り。手間は少ないが、硬く折れやすい刀になる。', 'An old method using a single steel with no core. Easy, but the blade is hard and brittle.'),
-    pieces: [], tol: 0, mult: 0.7, tough: 0.75
-  }
-};
-
-function stageTsukuri({ root, scope, state, finish }) {
-  const ui = stageLayout(root, L('<strong>造り込み</strong>の方法を選べ', 'Choose a <strong>lamination</strong> method'));
-  const [c, g] = makeCanvas(860, 400);
-  const W = c.W, H = c.H;
-  const parts = makeParticles();
-  const CX = 430, BOTTOM = 330, TOP = 150;
-  let method = null, M = null;
-  let phase = 'choose';      // choose | place | drop | heat | strike | weld | done
-  let pieceIdx = 0, swing = 0, swingT = 0, dropAnim = 0;
-  const placed = [];         // { kind, dx }
-  let T = 700, blowing = false, blowTimer = 0, heatQ = 0, strikes = [], marker = 0, mTime = 0, hammer = 0;
-  let weldAnim = 0, time = 0, msg = '', msgT = 0;
-  const say = (s, d = 1.2) => { msg = s; msgT = d; };
-
-  // ---- 方法の選択
-  const chooser = el('div', 'method-grid');
-  Object.entries(TSUKURI_METHODS).forEach(([key, m]) => {
-    const b = el('button', 'method');
-    b.type = 'button';
-    const [mc, mg] = makeCanvas(180, 120, 'method-canvas');
-    drawSection(mg, 90, 108, 0.5, key, 1100, true);
-    b.append(mc);
-    b.append(el('div', 'method-info', `<h3>${m.name}<small>${m.yomi}</small></h3><p>${m.desc}</p>`));
-    b.addEventListener('click', () => { Sound.click(); choose(key); });
-    chooser.append(b);
-  });
-  ui.view.append(chooser);
-
-  function choose(key) {
-    method = key; M = TSUKURI_METHODS[key];
-    chooser.remove();
-    ui.view.append(c);
-    if (M.pieces.length) {
-      phase = 'place';
-      ui.hint.innerHTML = L('<strong>中央</strong>に来た瞬間に落とせ<span class="keys">（<kbd>Space</kbd>）</span>', 'Drop it when it reaches the <strong>center</strong><span class="keys"> (<kbd>Space</kbd>)</span>');
-    } else {
-      phase = 'heat';
-      ui.hint.innerHTML = L('そのまま沸かして鍛える', 'Heat and forge it as is');
-      setHeatHint();
-    }
-    renderControls();
-  }
-  function pieceLabel(k) { return k === 'shin' ? '<strong>心鉄</strong>' : '<strong>刃鉄</strong>'; }
-  function setHeatHint() {
-    ui.hint.innerHTML = L('<strong>沸かし付け</strong>：沸かして取り出し、拍子よく打つ<span class="keys">（<kbd>Space</kbd>長押し／<kbd>Enter</kbd>／<kbd>Space</kbd>）</span>', '<strong>Forge-weld</strong>: heat, take out, strike on the beat<span class="keys"> (hold <kbd>Space</kbd> / <kbd>Enter</kbd> / <kbd>Space</kbd>)</span>');
-  }
-
-  // ---- 操作
-  const dropBtn = btn(L('落とす', 'Drop'), 'primary big', () => drop());
-  const blowBtn = btn(L('ふいごを吹く（長押し）', 'Pump Bellows (hold)'), 'primary hold');
-  const takeBtn = btn(L('取り出して打つ', 'Take Out & Strike'), '', () => takeOut());
-  const hitBtn = btn(L('打つ', 'Strike'), 'primary big', () => strike());
-  const startBlow = e => { e && e.preventDefault(); if (phase === 'heat') { blowing = true; Sound.init(); } };
-  const stopBlow = () => { blowing = false; };
-  scope.on(blowBtn, 'pointerdown', startBlow);
-  scope.on(blowBtn, 'pointerup', stopBlow);
-  scope.on(blowBtn, 'pointerleave', stopBlow);
-  scope.on(blowBtn, 'pointercancel', stopBlow);
-  scope.on(c, 'pointerdown', () => { if (phase === 'place') drop(); else if (phase === 'strike') strike(); });
-  scope.on(window, 'keydown', e => {
-    if (e.code === 'Space') {
-      e.preventDefault();
-      if (e.repeat) return;
-      if (phase === 'place') drop();
-      else if (phase === 'heat') startBlow();
-      else if (phase === 'strike') strike();
-    } else if (e.code === 'Enter' && phase === 'heat') { e.preventDefault(); takeOut(); }
-  });
-  scope.on(window, 'keyup', e => { if (e.code === 'Space') stopBlow(); });
-
-  function renderControls() {
-    ui.controls.innerHTML = '';
-    if (phase === 'place') ui.controls.append(dropBtn);
-    else if (phase === 'heat') ui.controls.append(blowBtn, takeBtn);
-    else if (phase === 'strike') ui.controls.append(hitBtn);
-  }
-
-  function drop() {
-    if (phase !== 'place') return;
-    placed.push({ kind: M.pieces[pieceIdx], dx: swing });
-    phase = 'drop';
-    dropAnim = 0;
-    renderControls();
-  }
-
-  function takeOut() {
-    if (phase !== 'heat') return;
-    if (T < 900) { say(L('まだ沸いていない！', 'Not hot enough!')); return; }
-    blowing = false;
-    heatQ = clamp(1 - Math.abs(T - 1310) / 170, 0, 1);
-    say(heatQ > 0.75 ? L('良い沸き！', 'Perfect heat!') : T > 1430 ? L('沸かしすぎ…', 'Overheated…') : L('沸きが足りない', 'Not hot enough'), 1.2);
-    phase = 'strike';
-    strikes = [];
-    mTime = Math.random() * 2;
-    Sound.thud();
-    renderControls();
-  }
-
-  function strike() {
-    if (phase !== 'strike' || hammer > 0.01) return;
-    const d = Math.abs(marker);
-    const q = d < 0.07 ? 1 : d < 0.18 ? 0.6 : 0.15;
-    strikes.push(q * clamp((T - 750) / 450, 0.2, 1));
-    hammer = 1;
-    Sound.clang(0.6 + q * 0.4, T < 950);
-    parts.spark(570, 228, Math.round(10 + q * 40 * heatGlow(T) * 1.5), { T: T + 60 });
-    say(q === 1 ? L('会心！', 'Perfect!') : q > 0.5 ? L('良し', 'Good') : L('外した…', 'Missed…'), 0.6);
-    T -= 50;
-    if (strikes.length >= 4) scope.timeout(() => { phase = 'weld'; weldAnim = 0; renderControls(); }, 350);
-  }
-
-  function end() {
-    if (phase === 'done') return;
-    phase = 'done';
-    Sound.stopLoops();
-    const place = placed.length ? placed.reduce((a, p) => a + clamp(1 - Math.max(0, Math.abs(p.dx) - 3) / M.tol, 0, 1), 0) / placed.length : 1;
-    const sAvg = strikes.reduce((a, b) => a + b, 0) / strikes.length;
-    const weld = heatQ * 0.4 + sAvg * 0.6;
-    const raw = M.pieces.length ? 0.5 * place + 0.5 * weld : weld;
-    const score = Math.round(clamp(raw * 100 * M.mult, 0, 100));
-    state.method = method;
-    state.methodName = M.name;
-    state.methodTough = M.tough;
-    state.coreOffset = placed.length ? placed[placed.length - 1].dx : 0;
-    const off = placed.map(p => Math.abs(p.dx));
-    const worst = off.length ? Math.max(...off) : 0;
-    finish(score,
-      L(`${M.name}で造り込んだ。`, `Laminated with ${term(M.name)}. `) +
-      (method === 'maru' ? L('心鉄がないため、刃は硬いが折れやすい。', 'With no core, the blade is hard but brittle. ') :
-        worst <= 6 ? L('心鉄が中央にぴたりと収まった。', 'The core sits perfectly centered. ') :
-        worst <= M.tol ? L('心鉄がやや偏ったが、許容の内。', 'The core is slightly off, but acceptable. ') : L('心鉄が大きく偏った。研ぎ減ると心鉄が刃に出るかもしれぬ。', 'The core is far off-center and may show through after polishing. ')) +
-      (weld > 0.75 ? L('沸かし付けも見事で、鋼はしっかりと一体になった。', 'A superb weld — the steels became one.') : weld > 0.45 ? L('沸かし付けはまずまず。', 'A decent weld.') : L('鍛着が甘く、鍛え割れの恐れがある。', 'A weak weld that may cause forging cracks.')));
-  }
-
-  /* 断面図。key: 方法、T: 温度、ghost: 選択画面用のすべて配置済み表示 */
-  function drawSection(gg, cx, bottom, scale, key, temp, ghost, offs = {}, hidden = {}) {
-    const s = scale;
-    const kawa = heatRGB(temp), shin = heatRGB(temp - 140), ha = heatRGB(temp + 40);
-    const gl = heatGlow(temp);
-    const shape = (pts, col, label) => {
-      gg.beginPath();
-      pts.forEach((p, i) => i ? gg.lineTo(cx + p[0] * s, bottom - p[1] * s) : gg.moveTo(cx + p[0] * s, bottom - p[1] * s));
-      gg.closePath();
-      gg.save();
-      gg.shadowColor = rgbStr(col, 0.8 * gl);
-      gg.shadowBlur = 18 * s * gl;
-      gg.fillStyle = rgbStr(col);
-      gg.fill();
-      gg.restore();
-      gg.strokeStyle = rgbStr(heatRGB(temp - 320), 0.9);
-      gg.lineWidth = 1.2;
-      gg.stroke();
-      if (label && s > 0.8) {
-        const cxl = pts.reduce((a, p) => a + p[0], 0) / pts.length, cyl = pts.reduce((a, p) => a + p[1], 0) / pts.length;
-        gg.fillStyle = 'rgba(40,15,5,0.75)';
-        gg.font = `bold ${15 * s}px "Shippori Mincho", serif`;
-        gg.textAlign = 'center';
-        gg.fillText(label, cx + cxl * s, bottom - cyl * s + 5);
-      }
-    };
-    if (key === 'kobuse') {
-      shape([[-80, 160], [-36, 160], [-36, 40], [36, 40], [36, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, L('皮鉄', 'Skin'));
-      if (ghost || !hidden.shin) {
-        const d = offs.shin || 0;
-        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 42], [-34 + d, 42]], shin, L('心鉄', 'Core'));
-      }
-    } else if (key === 'sanmai') {
-      shape([[-80, 160], [-36, 160], [-36, 10], [-60, 6], [-80, 30]], kawa, '');
-      shape([[36, 160], [80, 160], [80, 30], [60, 6], [36, 10]], kawa, '');
-      if (s > 0.8) {
-        gg.fillStyle = 'rgba(40,15,5,0.75)'; gg.font = `bold ${15 * s}px "Shippori Mincho", serif`; gg.textAlign = 'center';
-        if (EN) { gg.fillText('Skin', cx - 58 * s, bottom - 80 * s); gg.fillText('Skin', cx + 58 * s, bottom - 80 * s); }
-        else {
-        gg.fillText('皮', cx - 58 * s, bottom - 90 * s); gg.fillText('鉄', cx - 58 * s, bottom - 70 * s);
-        gg.fillText('皮', cx + 58 * s, bottom - 90 * s); gg.fillText('鉄', cx + 58 * s, bottom - 70 * s);
-        }
-      }
-      if (ghost || !hidden.ha) {
-        const d = offs.ha || 0;
-        shape([[-34 + d, 50], [34 + d, 50], [34 + d, 10], [0 + d, 0], [-34 + d, 10]], ha, L('刃鉄', 'Edge'));
-      }
-      if (ghost || !hidden.shin) {
-        const d = offs.shin || 0;
-        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 52], [-34 + d, 52]], shin, L('心鉄', 'Core'));
-      }
-    } else {
-      shape([[-80, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, L('鋼', 'Steel'));
-    }
-  }
-
-  /* 鍛着後の断面：一体になった鋼。心鉄・刃鉄のずれが偏りとして残る */
-  function drawWelded(gg, temp, k) {
-    const sy = lerp(1, 0.82, smooth(clamp(k * 1.5, 0, 1)));   // 打ち締めて低くなる
-    const sx = lerp(1, 1.06, smooth(clamp(k * 1.5, 0, 1)));
-    const P = (x, y) => [CX + x * sx, BOTTOM - y * sy];
-    const poly = (pts, col, alpha = 1) => {
-      gg.beginPath();
-      pts.forEach((p, i) => { const q = P(p[0], p[1]); i ? gg.lineTo(q[0], q[1]) : gg.moveTo(q[0], q[1]); });
-      gg.closePath();
-      gg.fillStyle = rgbStr(col, alpha);
-      gg.fill();
-    };
-    const outer = [[-80, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]];
-    const kawa = heatRGB(temp), shin = heatRGB(temp - 150), ha = heatRGB(temp + 50);
-    gg.save();
-    gg.shadowColor = rgbStr(kawa, 0.8 * heatGlow(temp)); gg.shadowBlur = 24;
-    poly(outer, kawa);
-    gg.restore();
-    const off = kind => { const p = placed.find(q => q.kind === kind); return p ? clamp(p.dx * 0.45, -40, 40) : 0; };
-    const seam = 1 - smooth(clamp(k * 1.3, 0, 1));                 // 境目が消えていく
-    if (method === 'kobuse' || method === 'sanmai') {
-      const d = off('shin');
-      const yb = method === 'sanmai' ? 54 : 44;
-      poly([[-30 + d, 150], [30 + d, 150], [30 + d, yb], [-30 + d, yb]], shin, 0.95);
-      if (Math.abs(d) > 24) {                                      // 心鉄が表に出てしまう
-        gg.fillStyle = '#ffb38a'; gg.font = `${fs(c, 17)}px serif`; gg.textAlign = 'center';
-        const q = P(d > 0 ? 80 : -80, 175);
-        gg.fillText(L('心鉄が皮から出ている', 'Core exposed!'), q[0], q[1]);
-      }
-    }
-    if (method === 'sanmai') {
-      const d = off('ha');
-      poly([[-30 + d, 50], [30 + d, 50], [30 + d, 10], [0 + d, 1], [-30 + d, 10]], ha, 0.95);
-    }
-    if (seam > 0.02 && method !== 'maru') {
-      gg.strokeStyle = rgbStr(heatRGB(temp - 350), 0.7 * seam);
-      gg.lineWidth = 1.5;
-      gg.beginPath();
-      [[-36, 160, -36, method === 'sanmai' ? 8 : 40], [36, 160, 36, method === 'sanmai' ? 8 : 40]].forEach(([x1, y1, x2, y2]) => {
-        const a = P(x1, y1), b = P(x2, y2); gg.moveTo(a[0], a[1]); gg.lineTo(b[0], b[1]);
-      });
-      gg.stroke();
-    }
-    gg.strokeStyle = rgbStr(heatRGB(temp - 320), 0.9);
-    gg.lineWidth = 1.2;
-    gg.beginPath();
-    outer.forEach((p, i) => { const q = P(p[0], p[1]); i ? gg.lineTo(q[0], q[1]) : gg.moveTo(q[0], q[1]); });
-    gg.closePath(); gg.stroke();
-    if (k > 0.5) {
-      gg.fillStyle = `rgba(40,15,5,${0.7 * (k - 0.5) * 2})`;
-      gg.font = `bold ${fs(c, 18)}px "Shippori Mincho", serif`; gg.textAlign = 'center';
-      if (method !== 'maru') {
-        const q1 = P(off('shin'), 105), q2 = P(off('shin') > 0 ? -60 : 60, 120);
-        gg.fillText(L('心鉄', 'Core'), q1[0], q1[1]); gg.fillText(L('皮鉄', 'Skin'), q2[0], q2[1]);
-        if (method === 'sanmai') { const q3 = P(off('ha'), 22); gg.fillText(L('刃鉄', 'Edge'), q3[0], q3[1]); }
-      }
-    }
-  }
-
-  renderControls();
-  scope.loop(dt => {
-    time += dt;
-    msgT -= dt;
-    hammer = Math.max(0, hammer - dt * 4);
-    parts.update(dt);
-    if (phase === 'choose') return;
-
-    // ---- 更新
-    if (phase === 'place') {
-      swingT += dt * (0.55 + pieceIdx * 0.2);
-      const f = swingT % 2;
-      swing = (f < 1 ? f * 2 - 1 : 3 - f * 2) * 150;
-      T = 1150 + Math.sin(time * 2) * 15;
-    } else if (phase === 'drop') {
-      dropAnim += dt / 0.35;
-      if (dropAnim >= 1) {
-        Sound.thud();
-        Sound.clang(0.4, true);
-        const dx = Math.abs(placed[placed.length - 1].dx);
-        say(dx <= 6 ? L('ぴたり！', 'Perfect fit!') : dx <= M.tol ? L('少しずれた', 'Slightly off') : L('大きくずれた…', 'Way off…'), 1);
-        pieceIdx++;
-        if (pieceIdx < M.pieces.length) { phase = 'place'; renderControls(); }
-        else {
-          phase = 'placed';
-          scope.timeout(() => { phase = 'heat'; T = 900; setHeatHint(); renderControls(); }, 900);
-        }
-      }
-    } else if (phase === 'heat') {
-      if (blowing) {
-        T += (190 + Math.max(0, 1300 - T) * 0.12) * dt;
-        blowTimer -= dt;
-        if (blowTimer <= 0) { Sound.whoosh(); blowTimer = 0.5; }
-      } else T += (T < 950 ? 25 : -35) * dt;
-      T = Math.min(T, 1560);
-      Sound.fire(blowing ? 0.9 : 0.4);
-      if (T > 1250 && Math.random() < dt * 10) parts.spark(170 + rand(-50, 50), 205, 1, { T: 1400, angle: -Math.PI / 2, spread: 0.5, min: 100, max: 300 });
-    } else if (phase === 'strike') {
-      Sound.fire(0.2);
-      T -= 20 * dt;
-      mTime += dt * 0.75;
-      const f = mTime % 2;
-      marker = f < 1 ? f * 2 - 1 : 3 - f * 2;
-    } else if (phase === 'weld') {
-      weldAnim += dt / 2.2;
-      T = Math.max(700, T - 100 * dt);
-      if (weldAnim >= 1) end();
-    }
-
-    // ---- 描画
-    const sectionView = phase === 'place' || phase === 'drop' || phase === 'placed' || phase === 'weld';
-    if (sectionView) {
-      // 断面を見下ろす作業台
-      const bg = g.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, '#120c09'); bg.addColorStop(1, '#1c130e');
-      g.fillStyle = bg; g.fillRect(0, 0, W, H);
-      const ag = g.createLinearGradient(0, BOTTOM, 0, BOTTOM + 30);
-      ag.addColorStop(0, '#55575e'); ag.addColorStop(0.2, '#26272c'); ag.addColorStop(1, '#111215');
-      g.fillStyle = ag; g.fillRect(200, BOTTOM, 460, 30);
-      g.fillStyle = '#c9b89a'; g.font = `${fs(c, 16)}px serif`; g.textAlign = 'left';
-      g.fillText(L('断面図', 'Cross-section'), 24, 30);
-      const offs = {}, hidden = {};
-      M.pieces.forEach(k => { hidden[k] = true; });
-      placed.forEach((p, i) => {
-        if (phase === 'drop' && i === placed.length - 1) return;
-        hidden[p.kind] = false; offs[p.kind] = p.dx;
-      });
-      if (phase === 'weld') drawWelded(g, T, weldAnim);
-      else drawSection(g, CX, BOTTOM, 1, method, 1150, false, offs, hidden);
-      // 揺れている / 落下中のピース
-      const drawPiece = (kind, dx, yTop) => {
-        const col = kind === 'shin' ? heatRGB(1010) : heatRGB(1190);
-        const h = kind === 'shin' ? 106 : 46;
-        g.save();
-        g.shadowColor = rgbStr(col, 0.7); g.shadowBlur = 16;
-        g.fillStyle = rgbStr(col);
-        g.fillRect(CX - 34 + dx, yTop, 68, h);
-        g.restore();
-        g.strokeStyle = 'rgba(60,20,5,0.9)'; g.strokeRect(CX - 34 + dx, yTop, 68, h);
-        g.fillStyle = 'rgba(40,15,5,0.75)'; g.font = `bold ${fs(c, 18)}px "Shippori Mincho", serif`; g.textAlign = 'center';
-        g.fillText(kind === 'shin' ? L('心鉄', 'Core') : L('刃鉄', 'Edge'), CX + dx, yTop + h / 2 + 5);
-        // 箸（鋏）
-        g.strokeStyle = '#2b2b2f'; g.lineWidth = 5;
-        g.beginPath(); g.moveTo(CX + dx - 20, yTop + 4); g.lineTo(CX + dx - 60, yTop - 60); g.moveTo(CX + dx + 20, yTop + 4); g.lineTo(CX + dx + 60, yTop - 60); g.stroke();
-      };
-      if (phase === 'place') {
-        const k = M.pieces[pieceIdx];
-        drawPiece(k, swing, 40);
-        // 中央の目印
-        g.setLineDash([5, 6]); g.strokeStyle = 'rgba(232,198,108,0.6)'; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(CX, 20); g.lineTo(CX, BOTTOM); g.stroke(); g.setLineDash([]);
-      } else if (phase === 'drop') {
-        const p = placed[placed.length - 1];
-        const restTop = BOTTOM - (p.kind === 'shin' ? 158 : 50);
-        drawPiece(p.kind, p.dx, lerp(40, restTop, smooth(clamp(dropAnim, 0, 1))));
-      }
-      if (phase === 'weld') {
-        g.font = `bold ${fs(c, 28, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe9c4';
-        g.fillText(L('鍛着！', 'Welded!'), CX, 90);
-      }
-    } else {
-      // 沸かし付け：鍛冶場
-      drawSmithy(g, W, H, heatGlow(T), 470);
-      g.fillStyle = '#2b1c14'; g.fillRect(40, H * 0.72 - 40, 240, 70);
-      g.fillStyle = '#3a271b'; g.fillRect(30, H * 0.72 - 50, 260, 14);
-      const inFire = phase === 'heat';
-      Sword.drawCoals(g, 55, H * 0.72 - 70, 210, 50, inFire ? (blowing ? 1 : 0.35) : 0.2, time);
-      const bx = inFire ? 85 : 500, by = inFire ? H * 0.72 - 78 : H * 0.72 - 50 - 40;
-      Sword.drawHotBar(g, bx, by, 150, 40, T, { seed: 91, time, layers: 3, scale: 50 });
-      if (inFire) Sword.drawCoals(g, 55, H * 0.72 - 50, 210, 26, blowing ? 1 : 0.35, time + 3, 21);
-      if (phase === 'strike' || hammer > 0) {
-        const lift = phase === 'strike' ? (1 - hammer) : 1;
-        const hy = by - 22 - lift * 70;
-        g.save(); g.translate(570, hy); g.rotate(-0.25 * lift);
-        g.fillStyle = '#5a3d22'; g.fillRect(20, -6, 150, 9);
-        const hg = g.createLinearGradient(0, -22, 0, 22);
-        hg.addColorStop(0, '#5b5d63'); hg.addColorStop(0.5, '#2a2b2f'); hg.addColorStop(1, '#141518');
-        g.fillStyle = hg; g.fillRect(-26, -20, 52, 40);
-        g.restore();
-      }
-      // 温度計
-      const gx = W - 52, gy = 40, gh = 260;
-      g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(gx - 8, gy - 8, 40, gh + 16);
-      for (let i = 0; i < gh; i++) { g.fillStyle = rgbStr(heatRGB(1550 - (i / gh) * 1050)); g.fillRect(gx, gy + i, 24, 1); }
-      const yOf = tt => gy + (1550 - tt) / 1050 * gh;
-      g.strokeStyle = '#e8c66c'; g.lineWidth = 2; g.strokeRect(gx - 3, yOf(1380), 30, yOf(1240) - yOf(1380));
-      const ty = yOf(clamp(T, 500, 1550));
-      g.fillStyle = '#fff'; g.beginPath(); g.moveTo(gx - 6, ty); g.lineTo(gx - 16, ty - 6); g.lineTo(gx - 16, ty + 6); g.fill();
-      if (phase === 'strike') {
-        const tx = 360, tw = 380, ty2 = 50;
-        g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(tx - 10, ty2 - 16, tw + 20, 32);
-        g.fillStyle = 'rgba(232,198,108,0.25)'; g.fillRect(tx + tw / 2 - tw * 0.09, ty2 - 10, tw * 0.18, 20);
-        g.fillStyle = 'rgba(232,198,108,0.7)'; g.fillRect(tx + tw / 2 - tw * 0.035, ty2 - 10, tw * 0.07, 20);
-        g.fillStyle = '#fff'; g.fillRect(tx + tw / 2 + marker * tw / 2 - 2, ty2 - 14, 4, 28);
-        g.fillStyle = '#c9b89a'; g.font = `${fs(c, 16)}px serif`; g.textAlign = 'left';
-        g.fillText(`${L('鎚', 'Strike')} ${strikes.length + 1} / 4`, tx, ty2 + 34);
-      }
-    }
-    parts.draw(g);
-    if (msgT > 0) {
-      g.font = `bold ${fs(c, 26, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';
-      g.fillStyle = `rgba(255,236,200,${clamp(msgT * 2, 0, 1)})`;
-      g.fillText(msg, W / 2 - 40, 130);
-    }
-    ui.status.innerHTML =
-      `<div class="stat"><span>${L('造り込み', 'Method')}</span><b>${term(M.name)}</b></div>` +
-      (M.pieces.length ? `<div class="stat"><span>${L('組み', 'Pieces')}</span><b>${Math.min(placed.length, M.pieces.length)} / ${M.pieces.length}</b></div>` : '') +
-      `<div class="stat"><span>${L('工程', 'Phase')}</span><b>${phase === 'place' || phase === 'drop' || phase === 'placed' ? L('組み合わせ', 'Assembly') : L('沸かし付け', 'Welding')}</b></div>`;
-  });
-}
-
-/* ============================================================
- * 三、素延べ・火造り
- * ============================================================ */
-function stageShape({ root, scope, state, finish }) {
-  const ui = stageLayout(root, L('<strong>▼</strong>の箇所を打ち、<strong>点線</strong>に揃えよ。冷えたら火床へ<span class="keys">（1：強　2：弱　R：火床）</span>', 'Hammer the <strong>▼</strong> spots down to the <strong>dotted line</strong>. Reheat when cool<span class="keys"> (1: strong · 2: light · R: reheat)</span>'));
-  const [c, g] = makeCanvas(860, 330);
-  c.style.touchAction = 'none';
-  ui.view.append(c);
-  const W = c.W, H = c.H;
-  const parts = makeParticles();
-  const N = 10, X0 = 70, X1 = 790, SW = (X1 - X0) / N;
-  const BASE = 250;
-  const target = [], hgt = [];
-  for (let i = 0; i < N; i++) {
-    target.push(i === N - 1 ? 30 : 52 - i * 1.9);
-    hgt.push(target[i] + rand(9, 26));
-  }
-  let T = 1050, cracks = [], power = 'strong', hover = -1, hammerAt = -1, hammerT = 0;
-  let reheating = 0, timeLeft = 75, time = 0, ended = false;
-  const crackSegs = new Set();
-
-  const strongBtn = btn(L('強く打つ', 'Strong'), 'toggle on', () => setPower('strong'));
-  const lightBtn = btn(L('軽く打つ', 'Light'), 'toggle', () => setPower('light'));
-  const fireBtn = btn(L('火床に戻す', 'Reheat'), '', () => reheat());
-  const doneBtn = btn(L('火造りを終える', 'Finish Shaping'), 'primary', () => end());
-  ui.controls.append(strongBtn, lightBtn, fireBtn, doneBtn);
-  function setPower(p) { power = p; strongBtn.classList.toggle('on', p === 'strong'); lightBtn.classList.toggle('on', p === 'light'); }
-  function reheat() { if (reheating > 0 || ended) return; reheating = 1.1; Sound.whoosh(); }
-
-  scope.on(window, 'keydown', e => {
-    if (e.key === '1') setPower('strong');
-    else if (e.key === '2') setPower('light');
-    else if (e.key === 'r' || e.key === 'R') reheat();
-  });
-  const segAt = x => { const i = Math.floor((x - X0) / SW); return i >= 0 && i < N ? i : -1; };
-  scope.on(c, 'pointermove', e => { hover = segAt(canvasPos(c, e)[0]); });
-  scope.on(c, 'pointerleave', () => { hover = -1; });
-  scope.on(c, 'pointerdown', e => {
-    const i = segAt(canvasPos(c, e)[0]);
-    if (i < 0 || reheating > 0 || ended || hammerT > 0) return;
-    hover = i;
-    hit(i);
-  });
-
-  function hit(i) {
-    const cold = T < 700;
-    let d = power === 'strong' ? rand(5.5, 9) : rand(1.4, 2.8);
-    d *= clamp((T - 550) / 400, 0.3, 1.1);
-    hgt[i] -= d;
-    if (i > 0) hgt[i - 1] -= d * 0.22;
-    if (i < N - 1) hgt[i + 1] -= d * 0.22;
-    hammerAt = i; hammerT = 0.18;
-    Sound.clang(power === 'strong' ? 1 : 0.55, cold);
-    parts.spark(X0 + SW * (i + 0.5), BASE - hgt[i], Math.round((power === 'strong' ? 18 : 6) * heatGlow(T) * 2), { T });
-    T -= power === 'strong' ? 14 : 6;
-    if (cold && Math.random() < 0.38) {
-      cracks.push({ i, x: X0 + SW * (i + rand(0.2, 0.8)) });
-      crackSegs.add(i);
-      Sound.crack();
-    }
-  }
-
-  function end() {
-    if (ended) return;
-    ended = true;
-    Sound.stopLoops();
-    let dev = 0;
-    for (let i = 0; i < N; i++) {
-      const e = hgt[i] - target[i];
-      dev += Math.max(0, Math.abs(e) - 1) * (e < 0 ? 1.6 : 1);
-    }
-    dev /= N;
-    const score = Math.round(clamp(100 - dev * 6.5 - cracks.length * 12, 0, 100));
-    state.shapeCracks = cracks.length;
-    finish(score,
-      (dev < 1.5 ? L('肉置きの整った美しい姿。', 'A beautiful, even form.') : dev < 4 ? L('やや凹凸が残るが、刀の姿になった。', 'Some unevenness remains, but it is a sword now.') : L('姿が歪んでいる。研ぎでも直しきれぬかもしれぬ。', 'The form is warped — polishing may not fix it.')) +
-      (cracks.length ? L(` 冷えた鋼を打ち、${cracks.length}箇所に鍛え割れが生じた。`, ` Striking cold steel caused ${cracks.length} crack(s).`) : ''));
-  }
-
-  scope.loop((dt) => {
-    time += dt;
-    if (!ended) {
-      timeLeft -= dt;
-      if (timeLeft <= 0) { timeLeft = 0; end(); }
-    }
-    if (reheating > 0) {
-      reheating -= dt;
-      T = Math.min(1080, T + 600 * dt);
-      Sound.fire(0.8);
-      if (reheating <= 0) Sound.fire(0);
-    } else {
-      T = Math.max(450, T - 34 * dt);
-    }
-    hammerT = Math.max(0, hammerT - dt);
-    parts.update(dt);
-
-    drawSmithy(g, W, H, heatGlow(T), -500);
-    // 金床（横長）
-    const ag = g.createLinearGradient(0, BASE, 0, BASE + 26);
-    ag.addColorStop(0, '#5d5f66'); ag.addColorStop(0.15, '#2a2b30'); ag.addColorStop(1, '#121316');
-    g.fillStyle = ag;
-    g.fillRect(X0 - 30, BASE, X1 - X0 + 60, 26);
-    g.fillStyle = '#100c09';
-    g.fillRect(X0 - 10, BASE + 26, X1 - X0 + 20, H - BASE - 26);
-
-    if (reheating > 0) {
-      Sword.drawCoals(g, X0, BASE - 40, X1 - X0, 50, 1, time);
-      g.font = `bold ${fs(c, 24, 1.6)}px serif`; g.fillStyle = '#ffe2b0'; g.textAlign = 'center';
-      g.fillText(L('火床で熱し直し中…', 'Reheating in the forge…'), W / 2, 80);
-    } else {
-      // 延べ棒：各区画の高さで上面を作る
-      const topFn = u => {
-        const x = u * N - 0.5;
-        const i = clamp(Math.floor(x), 0, N - 1), j = clamp(i + 1, 0, N - 1);
-        const f = clamp(x - Math.floor(x), 0, 1);
-        const hh = lerp(hgt[i], hgt[j], smooth(f));
-        // 先端（切先）は細る
-        const tip = u > 0.93 ? (u - 0.93) / 0.07 : 0;
-        return (60 - hh) + tip * tip * hh * 0.7;
-      };
-      Sword.drawHotBar(g, X0, BASE - 60, X1 - X0, 60, T, { seed: 55, time, topFn, scale: 90, layers: 0 });
-      // 目標ライン
-      g.setLineDash([6, 5]);
-      g.strokeStyle = 'rgba(255,255,255,0.75)';
-      g.lineWidth = 1.5;
-      g.beginPath();
-      for (let i = 0; i < N; i++) {
-        const y = BASE - target[i];
-        i ? g.lineTo(X0 + SW * i, y) : g.moveTo(X0, y);
-        g.lineTo(X0 + SW * (i + 1), y);
-      }
-      g.stroke();
-      g.setLineDash([]);
-      // ひび
-      for (const ck of cracks) {
-        const y0 = BASE - hgt[ck.i];
-        g.strokeStyle = 'rgba(10,5,2,0.95)'; g.lineWidth = 2;
-        g.beginPath(); g.moveTo(ck.x, y0); g.lineTo(ck.x + 4, y0 + 10); g.lineTo(ck.x - 2, y0 + 20); g.lineTo(ck.x + 3, y0 + 30); g.stroke();
-      }
-      // 区画の判定マーク
-      g.font = `${fs(c, 18)}px serif`; g.textAlign = 'center';
-      for (let i = 0; i < N; i++) {
-        const e = hgt[i] - target[i];
-        const x = X0 + SW * (i + 0.5);
-        const y = BASE - Math.max(hgt[i], target[i]) - 14;
-        if (Math.abs(e) <= 1) { g.fillStyle = '#9fe0a0'; g.fillText('◯', x, y); }
-        else if (e > 0) { g.fillStyle = '#ffb38a'; g.fillText('▼', x, y); }
-        else { g.fillStyle = '#8ab8ff'; g.fillText(L('薄', '▲'), x, y); }
-      }
-      if (hover >= 0) {
-        g.fillStyle = 'rgba(255,255,255,0.07)';
-        g.fillRect(X0 + SW * hover, 30, SW, BASE - 30);
-      }
-      // 鎚
-      if (hammerT > 0 && hammerAt >= 0) {
-        const x = X0 + SW * (hammerAt + 0.5);
-        const y = BASE - hgt[hammerAt] - 40 - hammerT * 120;
-        const hg = g.createLinearGradient(0, y, 0, y + 40);
-        hg.addColorStop(0, '#5b5d63'); hg.addColorStop(1, '#141518');
-        g.fillStyle = hg;
-        g.fillRect(x - 24, y, 48, 40);
-        g.fillStyle = '#5a3d22';
-        g.fillRect(x + 20, y + 15, 120, 9);
-      }
-    }
-    parts.draw(g);
-
-    // 温度の目安
-    const tc = heatRGB(T);
-    ui.status.innerHTML =
-      `<div class="stat"><span>${L('鋼の色', 'Color')}</span><i class="swatch" style="background:${rgbStr(tc)};box-shadow:0 0 12px ${rgbStr(tc, heatGlow(T))}"></i><b>${T < 700 ? L('冷えている', 'Cold') : T < 850 ? L('赤', 'Red') : L('橙', 'Orange')}</b></div>` +
-      `<div class="stat"><span>${L('鎚', 'Hammer')}</span><b>${power === 'strong' ? L('強', 'Strong') : L('弱', 'Light')}</b></div>` +
-      `<div class="stat"><span>${L('ひび', 'Cracks')}</span><b>${cracks.length}</b></div>` +
-      `<div class="stat"><span>${L('残り', 'Time')}</span><b>${Math.ceil(timeLeft)}</b> ${L('秒', 's')}</div>`;
-  });
-}
-
-/* ============================================================
- * 四、土置き
- * ============================================================ */
 const HAMON_N = 120;
 const HAMON_PRESETS = {
   '直刃': u => 0.2 + 0.006 * Math.sin(u * 40),
@@ -1180,512 +60,534 @@ const HAMON_PRESETS = {
   '皆焼風': u => 0.32 + 0.14 * Math.sin(u * Math.PI * 9) * Math.sin(u * Math.PI * 2.3)
 };
 
-function scoreHamon(h, drawn) {
-  let inRange = 0, jag = 0;
-  for (let i = 0; i < h.length; i++) {
-    if (h[i] >= 0.1 && h[i] <= 0.6) inRange++;
-    if (i > 0 && i < h.length - 1) jag += Math.abs(h[i + 1] - 2 * h[i] + h[i - 1]);
-  }
-  inRange /= h.length;
-  jag /= h.length - 2;
-  const jagPen = clamp((jag - 0.012) * 1400, 0, 40);
-  const mean = h.reduce((a, b) => a + b, 0) / h.length;
-  const narrowPen = mean < 0.14 ? 15 : 0;
-  return clamp(Math.round(inRange * 100 - jagPen - narrowPen), 0, 100);
-}
 
-function stageClay({ root, scope, state, finish }) {
-  const ui = stageLayout(root, L('刀身を<strong>なぞって刃文</strong>を描け（型も選べる）', '<strong>Trace a hamon line</strong> on the blade (or pick a pattern)'));
-  const [c, g] = makeCanvas(900, 260);
-  c.style.touchAction = 'none';
-  ui.view.append(c);
-  const W = c.W, H = c.H;
-  const SW = { x: 80, y: 138, length: 790, width: 120, sori: 0, nakago: false, polish: 0.15, folds: state.folds, grain: state.grain, seed: 7 };
-  const G = Sword.geom(SW);
-  let h = new Array(HAMON_N).fill(null);
-  let preset = null;
-  let drawing = false, lastI = -1;
-  let clayAnim = 0, ended = false;
+/* 刀の名前の候補（実在の名刀の号は避ける） */
+const SWORD_NAMES = ['月影', '村雨', '朧月', '白露', '霞', '春雷', '時雨', '夕凪', '東雲', '青嵐', '初霜', '緋桜'];
 
-  const pos2tv = (x, y) => {
-    const t = (x - SW.x) / SW.length;
-    const v = 0.5 + (SW.y - y) / G.w(t);
-    return [t, v];
-  };
-  const idxOf = t => Math.round(clamp(t / Sword.TK, 0, 1) * (HAMON_N - 1));
-
-  function setPoint(x, y) {
-    const [t, v] = pos2tv(x, y);
-    if (t < -0.02 || t > Sword.TK + 0.03) { lastI = -1; return; }
-    const i = idxOf(t), vv = clamp(v, 0.02, 0.92);
-    if (lastI >= 0 && lastI !== i) {
-      const a = Math.min(lastI, i), b = Math.max(lastI, i);
-      const va = h[lastI] ?? vv;
-      for (let k = a; k <= b; k++) {
-        const f = (k - lastI) / (i - lastI);
-        h[k] = lerp(va, vv, f);
-      }
-    } else h[i] = vv;
-    lastI = i;
-  }
-  scope.on(c, 'pointerdown', e => {
-    if (ended) return;
-    if (preset) { h = new Array(HAMON_N).fill(null); preset = null; }
-    drawing = true; lastI = -1;
-    c.setPointerCapture(e.pointerId);
-    setPoint(...canvasPos(c, e));
-  });
-  scope.on(c, 'pointermove', e => {
-    if (!drawing || ended) return;
-    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-    for (const ev of evs) setPoint(...canvasPos(c, ev));
-  });
-  scope.on(c, 'pointerup', () => { drawing = false; });
-  scope.on(c, 'pointercancel', () => { drawing = false; });
-
-  const presetRow = el('div', 'preset-row');
-  presetRow.append(el('span', 'label', L('型：', 'Pattern:')));
-  Object.keys(HAMON_PRESETS).forEach(name => {
-    presetRow.append(btn(EN ? term(name).replace(/ \(.+\)$/, '') : name, 'small', () => {
-      const f = HAMON_PRESETS[name];
-      h = Array.from({ length: HAMON_N }, (_, i) => f(i / (HAMON_N - 1)));
-      preset = name;
-    }));
-  });
-  const clearBtn = btn(L('描き直す', 'Clear'), '', () => { h = new Array(HAMON_N).fill(null); preset = null; });
-  const okBtn = btn(L('この刃文で土を置く', 'Apply Clay'), 'primary', () => decide());
-  ui.controls.append(presetRow, clearBtn, okBtn);
-
-  function filled() {
-    const out = h.slice();
-    const known = out.map((v, i) => v == null ? -1 : i).filter(i => i >= 0);
-    if (!known.length) return out.fill(0.22);
-    for (let i = 0; i < out.length; i++) {
-      if (out[i] != null) continue;
-      let a = -1, b = -1;
-      for (const k of known) { if (k < i) a = k; else if (k > i) { b = k; break; } }
-      if (a < 0) out[i] = out[b];
-      else if (b < 0) out[i] = out[a];
-      else out[i] = lerp(out[a], out[b], (i - a) / (b - a));
-    }
-    return out;
-  }
-
-  function decide() {
-    if (ended) return;
-    const cover = h.filter(v => v != null).length / HAMON_N;
-    if (!preset && cover < 0.5) { ui.hint.classList.add('flash'); scope.timeout(() => ui.hint.classList.remove('flash'), 600); return; }
-    ended = true;
-    const hf = filled();
-    let score = scoreHamon(hf);
-    if (preset) score = Math.min(score, 80);
-    else score = Math.round(score * (0.6 + 0.4 * cover));
-    state.hamon = hf.map(v => Math.round(v * 1000) / 1000);
-    state.hamonName = preset || '自作';
-    state.clayScore = score;
-    Sound.thud();
-    scope.timeout(() => finish(score,
-      (preset ? L(`「${preset}」の型で土を置いた。`, `Clay applied in the ${term(preset)} pattern. `) : L('自ら描いた刃文で土を置いた。', 'Clay applied along your own hamon. ')) +
-      (score >= 85 ? L('土置きは申し分ない。', 'Flawless clay work.') : score >= 60 ? L('多少乱れがあるが、良い刃文になりそうだ。', 'A little uneven, but it should make a fine hamon.') : L('土の線が乱れている。焼きが不安定になるだろう。', 'The line is erratic; the hardening will be uneven.'))), 1400);
-  }
-
-  scope.loop(dt => {
-    if (ended) clayAnim = Math.min(1, clayAnim + dt * 1.2);
-    g.clearRect(0, 0, W, H);
-    const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, '#2a2018'); bg.addColorStop(1, '#1a130e');
-    g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    // 作業台の木目
-    g.strokeStyle = 'rgba(0,0,0,0.25)';
-    for (let y = 8; y < H; y += 14) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(W * 0.3, y + 4, W * 0.6, y - 4, W, y + 2); g.stroke(); }
-
-    const hf = filled();
-    Sword.draw(g, { ...SW, hamon: ended ? hf : null, clay: ended ? clayAnim : 0, bg: '#1a130e' });
-
-    // 危険帯の目安
-    if (!ended) {
-      g.save();
-      g.fillStyle = 'rgba(220,60,40,0.16)';
-      g.fill(bandPath(0, 0.1));
-      g.fill(bandPath(0.6, 1));
-      g.restore();
-      // 線
-      g.lineWidth = 3;
-      g.lineCap = 'round';
-      g.strokeStyle = 'rgba(160,140,120,0.95)';
-      g.beginPath();
-      let started = false;
-      for (let i = 0; i < HAMON_N; i++) {
-        const v = preset ? h[i] : h[i];
-        if (v == null) { started = false; continue; }
-        const q = G.P(i / (HAMON_N - 1) * Sword.TK, v);
-        if (!started) { g.moveTo(q[0], q[1]); started = true; } else g.lineTo(q[0], q[1]);
-      }
-      g.stroke();
-      // 未描画部分（補間される）
-      g.setLineDash([4, 6]);
-      g.lineWidth = 1.5;
-      g.strokeStyle = 'rgba(200,190,170,0.35)';
-      g.beginPath();
-      for (let i = 0; i < HAMON_N; i++) {
-        const q = G.P(i / (HAMON_N - 1) * Sword.TK, hf[i]);
-        i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]);
-      }
-      g.stroke();
-      g.setLineDash([]);
-      g.font = `${fs(c, 16)}px serif`; g.fillStyle = 'rgba(255,200,180,0.7)'; g.textAlign = 'left';
-      const e0 = G.P(0.06, 0.0), s0 = G.P(0.06, 1);
-      g.fillText(L('刃先', 'Edge'), e0[0], e0[1] + 18);
-      g.fillText(L('棟', 'Spine'), s0[0], s0[1] - 8);
-    }
-    function bandPath(v0, v1) {
-      const p = new Path2D();
-      for (let i = 0; i <= 40; i++) { const q = G.P(Sword.HABAKI + (Sword.TK - Sword.HABAKI) * i / 40, v1); i ? p.lineTo(q[0], q[1]) : p.moveTo(q[0], q[1]); }
-      for (let i = 40; i >= 0; i--) { const q = G.P(Sword.HABAKI + (Sword.TK - Sword.HABAKI) * i / 40, v0); p.lineTo(q[0], q[1]); }
-      p.closePath(); return p;
-    }
-  });
-}
+/* 一続きの作刀の区切り（進行表示と遊び方に使う） */
+const SECTIONS = [
+  { id: 'kawa', no: '一', title: L('皮鉄の鍛錬', 'Skin Steel'), yomi: L('かわがね', 'Kawagane'),
+    how: L('叩いて伸ばし、切れ目を入れて折り返す。5回繰り返す。', 'Hammer it out, notch it, fold it. Five times.') },
+  { id: 'shin', no: '二', title: L('心鉄造り', 'Core Steel'), yomi: L('しんがね', 'Shingane'),
+    how: L('柔らかい心鉄を叩いて締める。', 'Hammer the soft core steel tight.') },
+  { id: 'tsukuri', no: '三', title: L('造り込み', 'Lamination'), yomi: L('つくりこみ', 'Tsukurikomi'),
+    how: L('皮鉄を叩いてU字に曲げ、心鉄を包んで鍛着する。', 'Bend the skin steel into a U and weld it around the core.') },
+  { id: 'nobashi', no: '四', title: L('打ち延ばし', 'Drawing Out'), yomi: L('うちのばし', 'Uchinobashi'),
+    how: L('刀の長さまで打ち延ばし、切先を打ち出す。', 'Draw it out to a blade and form the tip.') },
+  { id: 'yaki', no: '五', title: L('焼入れ', 'Quench'), yomi: L('やきいれ', 'Yaki-ire'),
+    how: L('自動。ジュワッと水に入れ、反りが生まれる。', 'Automatic. Into the water — hiss — and the curve appears.') }
+];
 
 /* ============================================================
- * 五、焼入れ
+ * 作刀：基本は叩くだけ。
+ *  師匠の小槌「トン」に続けて、半拍後に大鎚で「カン」。
+ *  皮鉄の鍛錬（折り返し5回）→ 心鉄造り → 造り込み → 打ち延ばし → 焼入れ（自動）
+ *  冷えたら自動で火床に戻して沸かし直す。
  * ============================================================ */
-function stageQuench({ root, scope, state, finish }) {
-  const TARGET = 790;
-  const ui = stageLayout(root, L('<strong>月の出の色</strong>になった瞬間に水へ<span class="keys">（<kbd>Space</kbd>）</span>', 'Quench the moment it glows <strong>“rising-moon” orange</strong><span class="keys"> (<kbd>Space</kbd>)</span>'));
-  const [c, g] = makeCanvas(900, 360);
+function stageKatana({ root, scope, state, finish, section }) {
+  const ui = stageLayout(root,
+    L('師匠の<strong>「トン」</strong>に続けて<strong>「カン」</strong>と打て。どこを叩いてもよい', 'After the master’s <strong>“tonk”</strong>, strike <strong>“KAN!”</strong> — tap anywhere') +
+    L('<span class="keys">（<kbd>Space</kbd>）</span>', '<span class="keys"> (<kbd>Space</kbd>)</span>'));
+  const [c, g] = makeCanvas(860, 420);
+  c.style.touchAction = 'none';
   ui.view.append(c);
   const W = c.W, H = c.H;
   const parts = makeParticles();
-  const swatch = el('div', 'ref-swatch');
-  swatch.innerHTML = `<i style="background:${rgbStr(heatRGB(TARGET))};box-shadow:0 0 18px ${rgbStr(heatRGB(TARGET), 0.8)}"></i><span>${L('月の出の色（目標）', 'Target: rising-moon color')}</span>`;
-  const qBtn = btn(L('水に入れる！', 'Quench!'), 'primary big', () => quench());
-  ui.controls.append(swatch, qBtn);
+  const CX = 570, AY = H * 0.72 - 50;
+  const KAWA_FOLDS = 5, KAWA_LEN = 150, KAWA_AREA = KAWA_LEN * 36;
+  const NOB_X = 70, NOB_MAX = 700;
 
-  let T = 380, time = 0, phase = 'heat', qT = 0, crack = false, anim = 0, soriNow = 0, finalSori = 0;
-  let rateSeed = Math.random() * 10;
-  const SW = { x: 120, y: 150, length: 720, width: 92, sori: 0, nakago: true, polish: 0.15, folds: state.folds, grain: state.grain, seed: 7, hamon: state.hamon, bg: '#050302' };
+  let T = 1300;
+  let purity = 0.44, carbon = 0.88 + Math.random() * 0.04;
+  let folds = 0, time = 0, msg = '', msgT = 0, shake = 0, combo = 0, maxCombo = 0;
+  const acc = { kawa: [], shin: [], tsukuri: [], nobashi: [] };
 
-  scope.on(window, 'keydown', e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); quench(); } });
+  // 鋼の状態
+  let len = KAWA_LEN, notch = false, seam = 0, foldAnim = -1;     // 皮鉄
+  let shinLen = 110, shinTight = 0;                               // 心鉄
+  let bendK = 0, coreIn = 0, closeK = 0, coreOff = 0, tseam = 1;   // 造り込み
+  let nobLen = 150, tipK = 0;                                     // 打ち延ばし
 
-  function quench() {
-    if (phase !== 'heat') return;
-    phase = 'quench';
-    qT = T;
-    const d = Math.abs(T - TARGET);
-    crack = T > 860 && Math.random() < clamp((T - 840) / 90, 0.15, 0.95);
-    if (state.shapeCracks && Math.random() < 0.15 * state.shapeCracks) crack = true;
-    const q = clamp(1 - Math.max(0, d - 10) / 90, 0, 1);
-    finalSori = 10 + 12 * q;
-    state.quenchT = Math.round(T);
-    state.crack = crack;
-    state.hamonStrength = T < 700 ? 0.12 : T < 760 ? lerp(0.35, 1, (T - 700) / 60) : 1;
-    state.sori = finalSori;
-    Sound.sizzle(2.8);
-    qBtn.disabled = true;
-    anim = 0;
+  // 手順
+  const steps = [];
+  for (let f = 0; f < KAWA_FOLDS; f++) {
+    steps.push({ s: 'kawa', k: 'spread', p: 0.2 }, { s: 'kawa', k: 'spread', p: 0.45 }, { s: 'kawa', k: 'spread', p: 0.7 }, { s: 'kawa', k: 'spread', p: 0.9 },
+      { s: 'kawa', k: 'notch' }, { s: 'kawa', k: 'fold' }, { s: 'kawa', k: 'weld', p: 0.3 }, { s: 'kawa', k: 'weld', p: 0.7 });
+  }
+  [0.2, 0.5, 0.8, 0.35, 0.65].forEach(p => steps.push({ s: 'shin', k: 'pack', p }));
+  steps.push({ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }, { s: 'tsukuri', k: 'insert', auto: true },
+    { s: 'tsukuri', k: 'close', p: -1 }, { s: 'tsukuri', k: 'close', p: 1 }, { s: 'tsukuri', k: 'weld', p: 0 }, { s: 'tsukuri', k: 'weld', p: 0 });
+  for (let i = 0; i < 8; i++) steps.push({ s: 'nobashi', k: 'draw', p: 0.1 + i * 0.11 });
+  steps.push({ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' });
+  const MUST = { notch: 1, fold: 1, bend: 1, close: 1, tip: 1 };   // 打ち逃したらやり直す手順
+  let si = 0, curSec = -1;
+
+  // 進行モード
+  let mode = 'banner';          // banner | beat | reheat | anim | yaki | done
+  let modeT = 0;
+  let beat = 0.7, nextBeat = 0, target = null, targetAt = 0, struck = false;
+  let masterFx = 0, hammerFx = null;
+  // 焼入れ
+  let yk = null;
+
+  const say = (s, d = 1.0) => { msg = s; msgT = d; };
+  const avg = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const secIndex = id => SECTIONS.findIndex(s => s.id === id);
+
+  const hitBtn = btn(L('カン！', 'KAN!'), 'primary big hit', () => strike());
+  ui.controls.append(hitBtn);
+  scope.on(c, 'pointerdown', e => { e.preventDefault(); strike(); });
+  scope.on(window, 'keydown', e => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      if (!e.repeat) strike();
+    }
+  });
+
+  function enterSection(id) {
+    curSec = secIndex(id);
+    section && section(curSec);
+    mode = 'banner'; modeT = 1.3;
+    target = null;
+    if (id === 'yaki') Music.setMood('tense');
+  }
+  enterSection('kawa');
+
+  /* 現在の鋼の上面の高さ（狙いの輪を出す位置） */
+  function topY(x) {
+    const st = steps[si] || {};
+    if (st.s === 'kawa') return AY - KAWA_AREA / len;
+    if (st.s === 'shin') return AY - 4400 / shinLen;
+    if (st.s === 'tsukuri') return st.k === 'weld' || st.k === 'close' ? AY - 24 - 80 : AY - 24;
+    const h = lerp(56, 22, clamp((nobLen - 150) / (NOB_MAX - 150), 0, 1));
+    return AY - h;
+  }
+  function targetX(st) {
+    if (st.s === 'kawa') {
+      if (st.k === 'notch') return CX;
+      if (st.k === 'fold') return CX + len / 2 - 14;
+      return CX - len / 2 + len * st.p;
+    }
+    if (st.s === 'shin') return CX - shinLen / 2 + shinLen * st.p;
+    if (st.s === 'tsukuri') {
+      if (st.k === 'bend') return CX + st.p * 95 * (1 - bendK * 0.6);
+      if (st.k === 'close') return CX + st.p * 48;
+      return CX + coreOff;
+    }
+    if (st.k === 'tip') return NOB_X + nobLen - 18;
+    return NOB_X + nobLen * st.p;
   }
 
-  scope.loop(dt => {
-    time += dt;
-    if (phase === 'heat') {
-      const rate = 52 + 34 * Math.sin(time * 1.1 + rateSeed) + 18 * Math.sin(time * 3.7 + rateSeed * 2);
-      T += Math.max(18, rate) * dt * (T > 700 ? 0.85 : 1.6);
-      Sound.fire(0.55);
-      if (T >= 1000) quench();
-    } else {
-      Sound.fire(0);
-      anim += dt;
-      if (anim < 2.4) {
-        if (anim > 0.35 && Math.random() < dt * 30) parts.steam(SW.x + SW.length / 2, 250, 3, 330);
-        T = Math.max(25, T - dt * (anim > 0.35 ? 900 : 0));
-        soriNow = lerp(0, finalSori, smooth(clamp((anim - 0.5) / 1.6, 0, 1)));
-      } else if (phase === 'quench') {
-        phase = 'done';
-        if (crack) Sound.crack();
-        const d = Math.abs(qT - TARGET);
-        let score = Math.round(clamp(100 - Math.max(0, d - 8) * 1.15, 0, 100));
-        if (crack) score = Math.round(score * 0.4);
-        scope.timeout(() => finish(score,
-          L(`入水時の温度は約${Math.round(qT)}℃。`, `Quenched at about ${Math.round(qT)}°C. `) +
-          (crack ? L('「ピシッ」…無情にも刃に焼割れが走った。', '*Crack!* … A quench crack ran through the edge.') :
-           qT < 700 ? L('温度が低すぎた。焼きがほとんど入っていない。', 'Far too cool — the blade barely hardened.') :
-           qT < 760 ? L('やや低い。刃文は淡く、刃の硬さも足りない。', 'A bit cool: a faint hamon and a softer edge.') :
-           qT <= 825 ? L('見事な焼入れ。刃文が冴え、美しい反りが生まれた。', 'A superb quench — a vivid hamon and a graceful curve.') :
-           L('高めの温度。沸が荒れ、刃が脆くなったかもしれぬ。', 'Rather hot — the crystals coarsened and the edge may be brittle.'))), 900);
+  function strike() {
+    if (mode !== 'beat' || foldAnim >= 0) return;
+    Sound.init();
+    const st = steps[si];
+    let q;
+    if (target && !struck) {
+      const d = Math.abs(time - targetAt);
+      q = d < 0.07 ? 1 : d < 0.15 ? 0.65 : 0.3;
+    } else q = 0.15;
+    const x = target ? target.x : targetX(st);
+    hammerFx = { x, y: topY(x), t: 0 };
+    shake = 3 + q * 7;
+    T -= 11;
+    Sound.clang(0.45 + q * 0.55, T < 1000);
+    if (navigator.vibrate) { try { navigator.vibrate(q >= 0.65 ? 18 : 8); } catch (e) { /* 無視 */ } }
+    if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
+    parts.spark(x, topY(x), Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
+    if (!target || struck) { say(L('拍子が早い', 'Too early'), 0.5); return; }
+    struck = true;
+    acc[st.s].push(q);
+    const hf = clamp((T - 850) / 450, 0.2, 1);
+    apply(st, q, hf);
+    const label = q === 1 ? L('会心！', 'Perfect!') : q >= 0.65 ? L('良し', 'Good') : L('ずれた', 'Off beat');
+    if (!msgT || msgT < 0.6) say(combo >= 3 && q >= 0.65 ? `${label}　${combo}${L('連', ' combo')}` : label, 0.55);
+    advance();
+  }
+
+  function apply(st, q, hf) {
+    if (st.s === 'kawa') {
+      if (st.k === 'spread') {
+        len += 34 * (0.35 + 0.65 * q) * hf;
+        purity += (1 - purity) * 0.07 * q * hf;
+        const nextIsNotch = steps[si + 1] && steps[si + 1].k === 'notch';
+        if (nextIsNotch && len < KAWA_LEN * 1.75) steps.splice(si + 1, 0, { s: 'kawa', k: 'spread', p: 0.3 + Math.random() * 0.5 });
+      } else if (st.k === 'notch') {
+        notch = true; Sound.chisel(); scope.timeout(() => Sound.chisel(), 90);
+      } else if (st.k === 'fold') {
+        foldAnim = 0; Sound.thud();
+      } else if (st.k === 'weld') {
+        seam = Math.max(0, seam - 0.55 * q * clamp((T - 1050) / 200, 0.25, 1));
+        purity += (1 - purity) * 0.03 * q;
+        const last = !steps[si + 1] || steps[si + 1].k !== 'weld';
+        if (last) {
+          if (seam > 0.3) { purity -= 0.02 * seam; say(L('鍛着が甘い…', 'Weak weld…'), 1); }
+          else say(L(`${folds}回目、鍛着！`, `Fold ${folds} welded!`), 1);
+          seam = 0;
+        }
+      }
+      purity = clamp(purity, 0.3, 0.995);
+    } else if (st.s === 'shin') {
+      shinLen = Math.min(KAWA_LEN, shinLen + 9 * (0.4 + 0.6 * q));
+      shinTight += 0.2 * q;
+    } else if (st.s === 'tsukuri') {
+      if (st.k === 'bend') bendK = Math.min(1, bendK + 0.5);
+      else if (st.k === 'close') closeK = Math.min(1, closeK + 0.5);
+      else if (st.k === 'weld') tseam = Math.max(0, tseam - 0.5 * q - 0.1);
+    } else if (st.s === 'nobashi') {
+      if (st.k === 'draw') nobLen = Math.min(NOB_MAX, nobLen + (NOB_MAX - 150) / 8);
+      else tipK = Math.min(1, tipK + 0.5);
+    }
+  }
+
+  function advance() {
+    si++;
+    const st = steps[si];
+    if (!st) { scope.timeout(startYaki, 500); mode = 'anim'; target = null; return; }
+    if (st.s !== SECTIONS[curSec].id) scope.timeout(() => enterSection(st.s), 350);
+  }
+
+  function startYaki() {
+    const accAll = avg([...acc.kawa, ...acc.shin, ...acc.tsukuri, ...acc.nobashi]);
+    const qq = clamp(0.5 + 0.5 * accAll + rand(-0.08, 0.08), 0, 1);
+    const crack = Math.random() < (1 - accAll) * 0.15;
+    const quenchT = Math.round(790 + (1 - qq) * (Math.random() < 0.5 ? -1 : 1) * 90);
+    const hamonName = accAll >= 0.85 ? '丁子' : accAll >= 0.7 ? '互の目' : accAll >= 0.55 ? '湾れ' : '直刃';
+    const f = HAMON_PRESETS[hamonName];
+    yk = { t: 0, accAll, qq, crack, quenchT, hamonName, hamon: Array.from({ length: HAMON_N }, (_, i) => f(i / (HAMON_N - 1))), sori: 10 + 12 * qq, sizzled: false };
+    enterSection('yaki');
+  }
+
+  function end() {
+    if (mode === 'done') return;
+    mode = 'done';
+    Sound.stopLoops();
+    const carbonScore = clamp(1 - Math.abs(carbon - 0.68) / 0.3, 0, 1);
+    state.scores = {
+      kawa: Math.round(clamp((purity - 0.45) / 0.5 * 80 + carbonScore * 20, 0, 100)),
+      shin: Math.round(avg(acc.shin) * 100),
+      tsukuri: Math.round(avg(acc.tsukuri) * 100 * (1 - Math.abs(coreOff) / 40)),
+      nobashi: Math.round(avg(acc.nobashi) * 100),
+      quench: Math.round(yk.qq * 100 * (yk.crack ? 0.4 : 1))
+    };
+    Object.assign(state, {
+      folds, purity, carbon, maxCombo,
+      grain: yk.accAll >= 0.6 ? 'itame' : 'mokume',
+      jiFolds: Math.round(8 + purity * 7),
+      methodName: '甲伏せ',
+      hamon: yk.hamon, hamonName: yk.hamonName,
+      hamonStrength: yk.qq >= 0.6 ? 1 : lerp(0.3, 1, yk.qq / 0.6),
+      polish: Math.round(70 + 30 * yk.accAll), scratches: 0,
+      sori: yk.sori, crack: yk.crack, quenchT: yk.quenchT
+    });
+    state.grainName = state.grain === 'itame' ? '板目肌' : '杢目肌';
+    finish(null, '');
+  }
+
+  // ---------- 描画
+  function drawKawa() {
+    const h = KAWA_AREA / len, bx = CX - len / 2, by = AY - h;
+    const opt = { seed: 17 + folds, time, layers: Math.min(folds * 2, 10), scale: Math.round((1 - purity) * 160) };
+    if (foldAnim >= 0) {
+      const half = len / 2;
+      Sword.drawHotBar(g, bx, by, half, h, T, opt);
+      g.save(); g.translate(CX, by); g.rotate(-Math.PI * smooth(foldAnim));
+      Sword.drawHotBar(g, 0, 0, half, h, T - 30, opt);
+      g.restore();
+      return;
+    }
+    Sword.drawHotBar(g, bx, by, len, h, T, opt);
+    if (notch) {
+      g.fillStyle = 'rgba(20,8,4,0.9)';
+      g.beginPath(); g.moveTo(CX - 7, by); g.lineTo(CX + 7, by); g.lineTo(CX, by + h * 0.5); g.closePath(); g.fill();
+    }
+    if (seam > 0) {
+      g.strokeStyle = `rgba(30,10,4,${0.8 * seam})`; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(bx + 3, by + h / 2); g.lineTo(bx + len - 3, by + h / 2); g.stroke();
+    }
+  }
+
+  function drawShin() {
+    const h = 4400 / shinLen;
+    Sword.drawHotBar(g, CX - shinLen / 2, AY - h, shinLen, h, T - 40, { seed: 77, time, scale: Math.round(90 * (1 - Math.min(1, shinTight))) });
+    // 鍛え終えた皮鉄が脇に控える
+    Sword.drawHotBar(g, 60, AY + 34, 150, 22, Math.max(650, T - 380), { seed: 18, time, scale: 30, layers: 6 });
+    label(L('心鉄', 'Core'), CX, AY - h - 40);
+    label(L('皮鉄', 'Skin'), 135, AY + 26);
+  }
+
+  function label(text, x, y) {
+    g.font = `bold ${fs(c, 16, 1.8)}px "Shippori Mincho", serif`;
+    g.textAlign = 'center'; g.fillStyle = 'rgba(255,230,200,0.85)';
+    g.fillText(text, x, y);
+  }
+
+  /* 造り込み：断面図。皮鉄の板が叩かれてU字になり、心鉄を包む */
+  function drawTsukuri() {
+    const kc = heatRGB(T), sc = heatRGB(T - 120), gl = heatGlow(T);
+    const piece = (fn, col) => {
+      g.save();
+      g.shadowColor = rgbStr(col, 0.7 * gl); g.shadowBlur = 16;
+      g.fillStyle = rgbStr(col);
+      g.beginPath(); fn(); g.fill();
+      g.restore();
+      g.strokeStyle = rgbStr(heatRGB(T - 320), 0.9); g.lineWidth = 1.2;
+      g.beginPath(); fn(); g.stroke();
+    };
+    const BASE = 60, TH = 24, WL = 80;
+    const ang = (Math.PI / 2) * smooth(bendK) + closeK * 0.05;
+    // 底
+    piece(() => g.rect(CX - BASE, AY - TH, BASE * 2, TH), kc);
+    // 左右の壁（底の端を軸に起き上がる）
+    [[-1, CX - BASE], [1, CX + BASE]].forEach(([side, px]) => {
+      piece(() => {
+        const pts = side < 0 ? [[-WL, 0], [0, 0], [0, -TH], [-WL, -TH]] : [[0, 0], [WL, 0], [WL, -TH], [0, -TH]];
+        const a = side < 0 ? ang : -ang;
+        pts.forEach(([x, y], i) => {
+          const X = px + x * Math.cos(a) - y * Math.sin(a), Y = AY + x * Math.sin(a) + y * Math.cos(a);
+          i ? g.lineTo(X, Y) : g.moveTo(X, Y);
+        });
+        g.closePath();
+      }, kc);
+    });
+    // 心鉄
+    if (coreIn > 0) {
+      const cy = lerp(AY - TH - 76 - 150, AY - TH - 76, smooth(coreIn));
+      piece(() => g.rect(CX - 32 + coreOff, cy, 64, 76), sc);
+      if (coreIn >= 1 && tseam > 0.05) {
+        g.strokeStyle = `rgba(30,10,4,${0.8 * tseam})`; g.lineWidth = 2;
+        g.strokeRect(CX - 32 + coreOff, cy, 64, 76);
+      }
+      label(L('心鉄', 'Core'), CX + coreOff, cy + 44);
+    }
+    label(L('皮鉄', 'Skin'), CX - 140 + bendK * 40, AY + 30);
+    g.fillStyle = '#c9b89a'; g.font = `${fs(c, 15)}px serif`; g.textAlign = 'left';
+    g.fillText(L('断面', 'Cross-section'), 24, 30);
+  }
+
+  function drawNobashi() {
+    // 長い金床
+    const ag = g.createLinearGradient(0, AY, 0, AY + 26);
+    ag.addColorStop(0, '#55575e'); ag.addColorStop(0.2, '#26272c'); ag.addColorStop(1, '#111215');
+    g.fillStyle = ag; g.fillRect(40, AY, W - 80, 26);
+    g.fillStyle = '#100c09'; g.fillRect(60, AY + 26, W - 120, H - AY - 26);
+    const h = lerp(56, 22, clamp((nobLen - 150) / (NOB_MAX - 150), 0, 1));
+    const topFn = u => (u > 0.9 ? Math.pow((u - 0.9) / 0.1, 1.6) * h * 0.85 * tipK : 0);
+    Sword.drawHotBar(g, NOB_X, AY - h, nobLen, h, T, { seed: 55, time, topFn, scale: 70, layers: 3 });
+  }
+
+  function drawYaki(dt) {
+    const t = yk.t;
+    const dark = clamp((t - 0.6) / 0.8, 0, 1) * 0.85;
+    g.fillStyle = `rgba(0,0,0,${dark})`; g.fillRect(0, 0, W, H);
+    // 水槽
+    g.fillStyle = '#1b130d'; g.fillRect(60, 300, 740, 110);
+    const wg = g.createLinearGradient(0, 312, 0, 410);
+    wg.addColorStop(0, 'rgba(40,60,70,0.95)'); wg.addColorStop(1, 'rgba(8,14,18,0.98)');
+    g.fillStyle = wg; g.fillRect(70, 312, 720, 96);
+    // 刀身：土を置き（〜0.9）→ 赤める（〜2.4）→ 入水
+    const clay = clamp(t / 0.6, 0, 1);
+    let heat, y = 200, sori = 0;
+    if (t < 0.9) heat = lerp(T, 520, clamp(t / 0.5, 0, 1));
+    else if (t < 2.4) heat = lerp(520, yk.quenchT, smooth((t - 0.9) / 1.5));
+    else {
+      const k = t - 2.4;
+      heat = Math.max(30, yk.quenchT - k * 900);
+      y = 200 + clamp(k / 0.3, 0, 1) * 120 * (k < 1.5 ? 1 : clamp(1 - (k - 1.5) / 0.5, 0, 1));
+      sori = lerp(0, yk.sori * 0.9, smooth(clamp((k - 0.2) / 1.4, 0, 1)));
+      if (!yk.sizzled) {
+        yk.sizzled = true;
+        Sound.sizzle(2.8);
+        if (navigator.vibrate) { try { navigator.vibrate([40, 30, 80]); } catch (e) { /* 無視 */ } }
+      }
+      if (k > 0.25 && k < 2 && Math.random() < dt * 40) parts.steam(430, 310, 3, 330);
+    }
+    Sword.draw(g, { x: 130, y, length: 640, width: 52, sori, nakago: true, habaki: false, polish: 0.2, folds: 8, seed: 7, hamon: yk.hamon, heat, clay, shadow: false, bg: '#050302' });
+    if (t < 0.9) label(L('土置き', 'Applying clay'), 430, 120);
+    else if (t < 2.4) label(L('月の出の色まで赤める…', 'Heating to the “rising-moon” glow…'), 430, 120);
+    else if (t < 3.6) {
+      const k = t - 2.4;
+      g.save();
+      g.font = `900 ${fs(c, 64, 1.5)}px "Shippori Mincho", serif`;
+      g.textAlign = 'center';
+      g.fillStyle = `rgba(255,240,215,${clamp(1.2 - k, 0, 1)})`;
+      g.translate(430, 150); g.scale(1 + k * 0.15, 1 + k * 0.15);
+      g.fillText(L('ジュワッ！', 'HSSSS!'), 0, 0);
+      g.restore();
+    }
+  }
+
+  function drawReheat() {
+    // 鋼の下に火床の炎
+    Sword.drawCoals(g, 120, AY + 6, 620, 40, 0.9, time, 41);
+    label(L('沸かし直し…', 'Reheating…'), W / 2, 70);
+  }
+
+  function drawScene(dt) {
+    const st = steps[Math.min(si, steps.length - 1)];
+    const sec = SECTIONS[curSec].id;
+    if (sec === 'nobashi' || sec === 'yaki') drawSmithy(g, W, H, heatGlow(T), -600);
+    else drawSmithy(g, W, H, heatGlow(T), CX - 105);
+    if (mode === 'reheat') drawReheat();
+    if (sec === 'kawa') drawKawa();
+    else if (sec === 'shin') drawShin();
+    else if (sec === 'tsukuri') drawTsukuri();
+    else if (sec === 'nobashi') drawNobashi();
+    else if (sec === 'yaki') { drawYaki(dt); return; }
+
+    // 師匠の合図
+    if (mode === 'beat' && target && !struck) {
+      const k = clamp((targetAt - time) / (beat / 2), 0, 1);
+      const ty = topY(target.x);
+      g.strokeStyle = `rgba(255,214,120,${0.35 + 0.65 * (1 - k)})`;
+      g.lineWidth = 3;
+      g.beginPath(); g.arc(target.x, ty, 16 + k * 60, 0, TAU); g.stroke();
+      g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(target.x, ty, 16, 0, TAU); g.stroke();
+      const lab = { notch: L('鏨', 'cut'), fold: L('折', 'fold'), bend: L('曲', 'bend'), close: L('締', 'press'), tip: L('切先', 'tip') }[st.k];
+      if (lab) {
+        g.font = `bold ${fs(c, 20, 1.7)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffd77a';
+        g.fillText(lab, target.x, ty - 34 - k * 20);
       }
     }
+    if (masterFx > 0 && target) {
+      const ty = topY(target.x);
+      g.save();
+      g.translate(target.x + 26, ty - 18 - masterFx * 26);
+      g.rotate(-0.6);
+      g.fillStyle = '#4a3220'; g.fillRect(8, -3, 70, 6);
+      g.fillStyle = '#5c5e64'; g.fillRect(-10, -9, 20, 18);
+      g.restore();
+    }
+    if (hammerFx && hammerFx.t < 0.25) {
+      const k = hammerFx.t / 0.25;
+      const hy = hammerFx.y - 46 - k * 70;
+      const hg = g.createLinearGradient(0, hy, 0, hy + 44);
+      hg.addColorStop(0, '#5b5d63'); hg.addColorStop(1, '#141518');
+      g.fillStyle = hg; g.fillRect(hammerFx.x - 28, hy, 56, 44);
+      g.fillStyle = '#5a3d22'; g.fillRect(hammerFx.x + 24, hy + 18, 130, 9);
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.fillStyle = rgbStr(heatRGB(T + 200), (1 - k) * 0.5);
+      g.beginPath(); g.arc(hammerFx.x, hammerFx.y, 26 + k * 30, 0, TAU); g.fill();
+      g.restore();
+    }
+    if (combo >= 2) {
+      g.font = `bold ${fs(c, 24, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
+      g.fillText(`${combo} ${L('連', 'combo')}`, 24, 30 + fs(c, 24, 1.8));
+    }
+  }
+
+  function drawBanner() {
+    const s = SECTIONS[curSec];
+    const k = clamp(modeT / 1.3, 0, 1);
+    const a = k > 0.8 ? (1 - k) / 0.2 : k < 0.2 ? k / 0.2 : 1;
+    g.save();
+    g.fillStyle = `rgba(0,0,0,${0.55 * a})`;
+    g.fillRect(0, H / 2 - 70, W, 140);
+    g.textAlign = 'center';
+    g.fillStyle = `rgba(210,174,99,${a})`;
+    g.font = `${fs(c, 18, 1.6)}px "Shippori Mincho", serif`;
+    g.fillText(L(`其の${s.no}`, `PART ${curSec + 1}`), W / 2, H / 2 - 28);
+    g.fillStyle = `rgba(255,240,220,${a})`;
+    g.font = `bold ${fs(c, 44, 1.5)}px "Shippori Mincho", serif`;
+    g.fillText(s.title, W / 2, H / 2 + 26);
+    g.restore();
+  }
+
+  // ---------- ループ
+  scope.loop(dt => {
+    time += dt;
+    msgT -= dt;
+    shake = Math.max(0, shake - dt * 30);
+    masterFx = Math.max(0, masterFx - dt * 6);
+    if (hammerFx) hammerFx.t += dt;
     parts.update(dt);
 
-    // 暗い鍛冶場
-    g.fillStyle = '#050302';
-    g.fillRect(0, 0, W, H);
-    const inFire = phase === 'heat';
-    const glowC = heatRGB(T);
-    // 火床（長い）
-    if (inFire) {
-      Sword.drawCoals(g, 90, 170, 760, 60, 0.3 + 0.08 * Math.sin(time * 2), time, 33);
-    } else {
-      // 水槽
-      g.fillStyle = '#1b130d';
-      g.fillRect(70, 215, 800, 120);
-      const wg = g.createLinearGradient(0, 230, 0, 335);
-      wg.addColorStop(0, 'rgba(40,60,70,0.9)'); wg.addColorStop(1, 'rgba(8,14,18,0.95)');
-      g.fillStyle = wg;
-      g.fillRect(82, 230, 776, 100);
-      g.fillStyle = '#2a1c12';
-      g.fillRect(70, 215, 800, 15);
-    }
-    const dropY = inFire ? 0 : clamp(anim / 0.35, 0, 1) * 110 * (anim < 1.6 ? 1 : clamp(1 - (anim - 1.6) / 0.6, 0, 1));
-    Sword.draw(g, { ...SW, y: SW.y + dropY, sori: soriNow, heat: T, clay: 1, shadow: false });
-    if (inFire) Sword.drawCoals(g, 90, 200, 760, 30, 0.3, time + 5, 34);
-    if (!inFire && anim < 2.0) {
-      // 水面
-      g.fillStyle = 'rgba(60,80,90,0.55)';
-      g.fillRect(82, 230, 776, 4);
-      // 沸騰の泡
-      for (let i = 0; i < 30 * clamp(1.6 - anim, 0, 1); i++) {
-        g.fillStyle = 'rgba(220,230,235,0.5)';
-        g.beginPath(); g.arc(SW.x + Math.random() * SW.length, 234 + Math.random() * 30, 1 + Math.random() * 3, 0, TAU); g.fill();
+    if (mode === 'banner') {
+      modeT -= dt;
+      if (modeT <= 0) {
+        if (SECTIONS[curSec].id === 'yaki') mode = 'yaki';
+        else { mode = 'beat'; nextBeat = time + 0.3; }
       }
+    } else if (mode === 'reheat') {
+      modeT -= dt;
+      T = Math.min(1320, T + 380 * dt);
+      Sound.fire(0.8);
+      if (Math.random() < dt * 3) Sound.whoosh();
+      if (modeT <= 0) { mode = 'beat'; nextBeat = time + 0.35; Sound.fire(0.15); }
+    } else if (mode === 'anim') {
+      // 心鉄を入れる（自動）
+      const st = steps[si];
+      if (st && st.k === 'insert') {
+        if (coreIn === 0) coreOff = (Math.random() < 0.5 ? -1 : 1) * (1 - avg(acc.tsukuri)) * 16;
+        coreIn = Math.min(1, coreIn + dt / 0.6);
+        if (coreIn >= 1) { Sound.thud(); mode = 'beat'; nextBeat = time + 0.3; si++; }
+      }
+    } else if (mode === 'beat') {
+      Sound.fire(0.15);
+      T -= 8 * dt;
+      if (foldAnim >= 0) {
+        foldAnim += dt / 0.45;
+        if (foldAnim >= 1) {
+          foldAnim = -1; len /= 2; notch = false; seam = 1;
+          folds++; carbon -= 0.04;
+          say(L(`${folds}回目の折り返し`, `Fold ${folds}`), 0.9);
+        }
+      } else if (time >= nextBeat) {
+        // 前の合図を打ち逃した
+        if (target && !struck) {
+          combo = 0;
+          const st = steps[si];
+          if (!MUST[st.k]) { acc[st.s].push(0); advance(); }
+          say(L('打ち逃した', 'Missed'), 0.5);
+        }
+        target = null;
+        const st = steps[si];
+        nextBeat = time + beat;
+        if (mode !== 'beat' || !st) { /* 区切りの切り替え中 */ }
+        else if (st.auto) { mode = 'anim'; }
+        else if (T < 920) {
+          mode = 'reheat'; modeT = 1.4;
+          say(L('冷えた', 'Cooled'), 0.8);
+        } else if (st.s === SECTIONS[curSec].id) {
+          beat = 60 / (86 + curSec * 8 + folds * 2);
+          target = { k: st.k, x: targetX(st) };
+          targetAt = time + beat / 2;
+          struck = false;
+          masterFx = 1;
+          Sound.tick();
+        }
+      }
+    } else if (mode === 'yaki') {
+      yk.t += dt;
+      if (yk.t > 4.6) end();
     }
-    parts.draw(g);
-    // 部屋をわずかに照らす
-    const gl = heatGlow(T);
+
     g.save();
-    g.globalCompositeOperation = 'lighter';
-    const rg = g.createRadialGradient(W / 2, 170, 20, W / 2, 170, 520);
-    rg.addColorStop(0, rgbStr(glowC, 0.08 * gl));
-    rg.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = rg; g.fillRect(0, 0, W, H);
+    if (shake > 0) g.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
+    drawScene(dt);
+    parts.draw(g);
+    if (mode === 'banner') drawBanner();
+    if (msgT > 0 && mode !== 'yaki') {
+      g.font = `bold ${fs(c, 26, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';
+      g.fillStyle = `rgba(255,236,200,${clamp(msgT * 2, 0, 1)})`;
+      g.fillText(msg, W / 2, 110);
+    }
     g.restore();
-    ui.status.innerHTML = phase === 'heat' ? `<div class="stat"><b>${L('色を見極めよ…', 'Watch the color…')}</b></div>` : `<div class="stat"><b>${L('ジュッ——', 'Hssss——')}</b></div>`;
-  });
-}
 
-/* ============================================================
- * 六、研ぎ
- * ============================================================ */
-function stagePolish({ root, scope, state, finish }) {
-  const STONES = [
-    { name: L('備水砥', 'Binsui (coarse)'), yomi: 'びんすいど', desc: '荒砥。刀の形を整える', min: 500, max: 1050, color: '#7a6a58', need: 3000 },
-    { name: L('改正名倉砥', 'Nagura (medium)'), yomi: 'かいせいなぐらど', desc: '中砥。荒砥の目を消す', min: 360, max: 760, color: '#9c8a74', need: 3200 },
-    { name: L('内曇砥', 'Uchigumori (fine)'), yomi: 'うちぐもりど', desc: '仕上砥。地鉄と刃文を引き出す', min: 220, max: 480, color: '#c2b8a4', need: 3400 }
-  ];
-  const ui = stageLayout(root, L('<strong>緑の速さ</strong>を保ち、左右にこすれ', 'Drag left and right, keeping the speed in the <strong>green</strong>'));
-  const [c, g] = makeCanvas(900, 300);
-  c.style.touchAction = 'none';
-  ui.view.append(c);
-  const W = c.W, H = c.H;
-  const SW = { x: 110, y: 185, length: 740, width: 96, sori: Math.min(state.sori || 14, 20) * 0.8, nakago: true, folds: state.folds, grain: state.grain,
-    seed: 7, hamon: state.hamon, hamonStrength: state.hamonStrength ?? 1, crack: state.crack, bg: '#1d1610' };
-  let si = 0, prog = 0, scratches = [0, 0, 0], speed = 0, lastX = null, lastTime = 0, down = false;
-  let stoneX = W / 2, lastScratch = 0, ended = false, time = 0, flash = 0;
-
-  scope.on(c, 'pointerdown', e => {
-    if (ended) return;
-    down = true;
-    c.setPointerCapture(e.pointerId);
-    const [x] = canvasPos(c, e);
-    lastX = x; lastTime = performance.now(); stoneX = x;
-  });
-  const up = () => { down = false; lastX = null; Sound.grind(0); };
-  scope.on(c, 'pointerup', up);
-  scope.on(c, 'pointercancel', up);
-  scope.on(c, 'pointermove', e => {
-    if (!down || ended) return;
-    const [x] = canvasPos(c, e);
-    const now = performance.now();
-    const dt = Math.max(1, now - lastTime) / 1000;
-    const dx = Math.abs(x - lastX);
-    const inst = dx / dt;
-    speed = speed * 0.75 + inst * 0.25;
-    stoneX = clamp(x, SW.x + 40, SW.x + SW.length - 40);
-    const st = STONES[si];
-    let gain = dx / st.need;
-    if (speed < st.min) gain *= 0.3;
-    else if (speed > st.max) {
-      gain *= 0.5;
-      if (now - lastScratch > 350 && Math.random() < 0.55) {
-        scratches[si]++;
-        lastScratch = now;
-        flash = 0.4;
-        Sound.chisel();
-      }
-    }
-    prog = Math.min(1, prog + gain);
-    Sound.grind(clamp(speed / 1200, 0.1, 1), 1 + si * 0.35);
-    lastX = x; lastTime = now;
-    if (prog >= 1) nextStone();
-  });
-
-  function nextStone() {
-    Sound.grind(0);
-    Sound.chime();
-    if (si < STONES.length - 1) {
-      si++;
-      prog = 0;
-      down = false; lastX = null;
-    } else {
-      ended = true;
-      const per = scratches.map((s, i) => clamp(100 - s * (i === 2 ? 9 : 6), 0, 100));
-      const score = Math.round(per[0] * 0.25 + per[1] * 0.3 + per[2] * 0.45);
-      state.polish = score;
-      state.scratches = Math.round(scratches[2] + scratches[1] * 0.4 + scratches[0] * 0.1);
-      scope.timeout(() => finish(score,
-        score >= 90 ? L('鏡のような地鉄に、刃文が冴え冴えと浮かび上がった。', 'A mirror finish — the hamon shines brilliantly from the steel.') :
-        score >= 65 ? L('地鉄の肌がよく見える。わずかに研ぎ傷が残る。', 'The grain shows well, with a few scratches.') :
-        L('研ぎ傷が目立つ。せっかくの地鉄が曇っている。', 'Scratches cloud the beautiful steel.')), 1200);
-    }
-  }
-
-  scope.loop(dt => {
-    time += dt;
-    flash = Math.max(0, flash - dt);
-    if (!down) speed *= Math.pow(0.02, dt);
-    g.clearRect(0, 0, W, H);
-    const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, '#2b2219'); bg.addColorStop(1, '#16110c');
-    g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    // 研ぎ桶の水面のにじみ
-    g.fillStyle = 'rgba(80,90,100,0.08)';
-    g.fillRect(0, 120, W, 140);
-
-    const polish = clamp((si + prog) / STONES.length, 0, 1) * 0.95 + 0.05;
-    const visScratches = Math.round(scratches[si] + (si > 0 ? scratches[si - 1] * 0.4 : 0));
-    Sword.draw(g, { ...SW, polish: ended ? polish : polish * 0.9, scratches: visScratches });
-    // 研ぎ汁（砥石の泥）：刀身の上だけに乗る
-    if (!ended) {
-      const G = Sword.geom(SW);
-      const pth = new Path2D();
-      for (let i = 0; i <= 60; i++) { const q = G.P(0.05 + 0.9 * i / 60, 1); i ? pth.lineTo(q[0], q[1]) : pth.moveTo(q[0], q[1]); }
-      for (let i = 60; i >= 0; i--) { const q = G.P(0.05 + 0.9 * i / 60, 0); pth.lineTo(q[0], q[1]); }
-      pth.closePath();
-      g.save();
-      g.clip(pth);
-      g.filter = 'blur(6px)';
-      const rs = rng(si * 31 + 5);
-      for (let i = 0; i < 26; i++) {
-        const q = G.P(0.06 + rs() * 0.88, rs());
-        g.fillStyle = `rgba(${si === 2 ? '205,200,190' : '125,112,96'},${(0.18 + rs() * 0.15) * (1 - prog * 0.8)})`;
-        g.beginPath(); g.ellipse(q[0], q[1], 20 + rs() * 50, 6 + rs() * 10, 0, 0, TAU); g.fill();
-      }
-      g.restore();
-    }
-    // 砥石
-    if (!ended) {
-      const st = STONES[si];
-      const sx = stoneX, sy = SW.y - 12;
-      g.save();
-      g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 10; g.shadowOffsetY = 4;
-      const sg = g.createLinearGradient(0, sy - 34, 0, sy + 34);
-      sg.addColorStop(0, st.color); sg.addColorStop(1, 'rgba(40,30,20,1)');
-      g.fillStyle = sg;
-      g.globalAlpha = down ? 0.95 : 0.7;
-      g.beginPath(); g.roundRect ? g.roundRect(sx - 55, sy - 32, 110, 54, 5) : g.rect(sx - 55, sy - 32, 110, 54); g.fill();
-      g.restore();
-      g.fillStyle = 'rgba(30,20,10,0.8)'; g.font = `${fs(c, 16)}px serif`; g.textAlign = 'center';
-      g.fillText(st.name.replace(/ \(.+\)$/, ''), sx, sy);
-      // 速度メーター
-      const mx = 120, mw = 660, my = 28, MAXS = 1400;
-      g.fillStyle = 'rgba(0,0,0,0.5)';
-      g.fillRect(mx - 8, my - 10, mw + 16, 30);
-      g.fillStyle = 'rgba(120,200,120,0.4)';
-      g.fillRect(mx + st.min / MAXS * mw, my - 4, (st.max - st.min) / MAXS * mw, 18);
-      g.fillStyle = 'rgba(220,80,60,0.35)';
-      g.fillRect(mx + st.max / MAXS * mw, my - 4, mw - st.max / MAXS * mw, 18);
-      const nx = mx + clamp(speed / MAXS, 0, 1) * mw;
-      g.fillStyle = flash > 0 ? '#ff6a50' : '#fff';
-      g.fillRect(nx - 2, my - 8, 4, 26);
-      g.fillStyle = '#c9b89a'; g.textAlign = 'left'; g.font = `${fs(c, 15)}px serif`;
-      g.fillText(L('遅い', 'Slow'), mx, my + 32); g.textAlign = 'right'; g.fillText(L('速すぎ（傷）', 'Too fast (scratch)'), mx + mw, my + 32);
-      if (flash > 0) {
-        g.font = `bold ${fs(c, 22, 1.6)}px serif`; g.fillStyle = `rgba(255,120,90,${flash * 2.5})`; g.textAlign = 'center';
-        g.fillText(L('研ぎ傷！', 'Scratch!'), W / 2, 90);
-      }
-    }
-    const st = STONES[Math.min(si, STONES.length - 1)];
+    const sec = SECTIONS[curSec];
     ui.status.innerHTML =
-      `<div class="stat"><span>${L('砥石', 'Stone')} ${si + 1}/3</span><b>${st.name}</b></div>` +
-      meter(L('研ぎ', 'Polish'), ended ? 1 : prog) +
-      `<div class="stat"><span>${L('研ぎ傷', 'Scratches')}</span><b>${scratches.reduce((a, b) => a + b, 0)}</b></div>`;
+      `<div class="stat"><span>${sec.no}</span><b>${sec.title}</b></div>` +
+      (sec.id === 'kawa' ? `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}/${KAWA_FOLDS}</b></div>` : '') +
+      `<div class="meter heat"><span>${L('鋼の熱', 'Heat')}</span><i><b style="width:${clamp((T - 860) / 460, 0, 1) * 100}%;background:${rgbStr(heatRGB(T))}"></b></i></div>` +
+      `<div class="stat"><span>${L('連打', 'Combo')}</span><b>${combo}</b></div>`;
+    hitBtn.disabled = mode !== 'beat';
   });
-}
-
-/* ============================================================
- * 七、銘切り
- * ============================================================ */
-function stageMei({ root, scope, state, finish }) {
-  const ui = stageLayout(root, L('刀工名と刀の名を刻め', 'Inscribe your name and the sword’s name'));
-  const form = el('div', 'mei-form');
-  form.innerHTML = `
-    <label>${L('刀工名', 'Swordsmith')}<input id="mei-smith" maxlength="${EN ? 14 : 8}" placeholder="${L('例：正宗', 'e.g. Masamune')}" autocomplete="off"></label>
-    <label>${L('刀の号（名前）', 'Sword name')}<input id="mei-name" maxlength="${EN ? 18 : 10}" placeholder="${L('例：月影', 'e.g. Moonshadow')}" autocomplete="off"></label>
-    <p class="note">${L('空欄の場合、刀工名は「無銘」となる。', 'Leave blank for an unsigned (mumei) blade.')}</p>`;
-  const nakago = el('div', 'nakago-view');
-  const text = el('div', 'nakago-text');
-  nakago.append(text);
-  ui.view.append(form, nakago);
-  const smithI = form.querySelector('#mei-smith');
-  const nameI = form.querySelector('#mei-name');
-  smithI.value = localStorage.getItem('kaji.smith') || '';
-  const go = btn(L('銘を切る', 'Carve'), 'primary', () => carve());
-  ui.controls.append(go);
-  let ended = false;
-  const preview = () => { text.textContent = smithI.value.trim() ? `${smithI.value.trim()}作` : '無銘'; };
-  smithI.addEventListener('input', preview);
-  preview();
-
-  function carve() {
-    if (ended) return;
-    ended = true;
-    go.disabled = true;
-    smithI.disabled = nameI.disabled = true;
-    const smith = smithI.value.trim();
-    try { localStorage.setItem('kaji.smith', smith); } catch (e) { /* 保存できなくても続行 */ }
-    state.smith = smith;
-    state.name = nameI.value.trim() || '無名';
-    state.date = reiwaDate();
-    const omote = smith ? `${smith}作` : '無銘';
-    const ura = smith ? state.date : '';
-    text.innerHTML = '';
-    const o = el('span', 'mei-omote'), u = el('span', 'mei-ura');
-    text.append(o, u);
-    const chars = [...omote].map(ch => [o, ch]).concat([...ura].map(ch => [u, ch]));
-    let k = 0;
-    const step = () => {
-      if (k >= chars.length) { scope.timeout(() => finish(null, L(`銘「${omote}」${ura ? '、裏に「' + ura + '」' : ''}を切った。`, `Inscribed “${omote}”${ura ? ' and the date “' + ura + '” on the reverse' : ''}.`)), 700); return; }
-      const [target, ch] = chars[k++];
-      const s = el('span', 'chiseled', ch);
-      target.append(s);
-      Sound.chisel();
-      scope.timeout(() => Sound.chisel(), 90);
-      scope.timeout(step, 260);
-    };
-    step();
-  }
 }
 
 const STAGES = [
-  { id: 'forge', how: L('鋼を真っ赤に沸かし、打って不純物を出し、折り返す。', 'Forge, strike out the slag, and fold.'), ctrl: L('長押しで加熱 → 輪が閉じたら打つ', 'Hold to heat → strike as the ring closes'), no: '一', title: L('積み沸かし・折り返し鍛錬', 'Forging & Folding'), yomi: L('つみわかし・おりかえしたんれん', 'Tsumi-wakashi · Orikaeshi-tanren'), run: stageForge,
-    intro: L('日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。この玉鋼を小さく割って積み重ね、火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。<br>大鎚を振るう<strong>向こう槌</strong>は、師匠（横座）の小槌が示す場所と拍子に合わせて打つ。',
-      'A katana begins with <strong>tamahagane</strong>, steel smelted from iron sand and charcoal. It is broken up, stacked, and <strong>heated to welding temperature</strong>. The smith then hammers it out and folds it again and again, driving out impurities as sparks and evening out the carbon. This becomes the hard <strong>skin steel</strong>. Fifteen folds make over 30,000 layers.<br>The striker swings the big hammer where — and when — the master taps with his small hammer.') },
-  { id: 'tsukuri', how: L('硬い皮鉄で、柔らかい心鉄を包む。', 'Wrap soft core steel in hard skin steel.'), ctrl: L('中央に来たら落とす', 'Drop it at the center'), no: '二', title: L('造り込み', 'Lamination'), yomi: L('つくりこみ', 'Tsukurikomi'), run: stageTsukuri,
-    intro: L('鍛えた硬い<strong>皮鉄</strong>と、炭素の少ない柔らかい<strong>心鉄</strong>を組み合わせる。甲伏せ・本三枚などの方法があり、皮鉄で心鉄を包んで<strong>沸かし付け</strong>、一本の鋼にする。「折れず、曲がらず、よく切れる」日本刀の秘密はこの組み合わせにある。',
-      'Hard <strong>skin steel</strong> is combined with soft, low-carbon <strong>core steel</strong>, then <strong>forge-welded</strong> into one bar. This combination is the secret of a katana that “neither breaks nor bends, and cuts superbly.”') },
-  { id: 'shape', how: L('叩いて刀の形に整える。', 'Hammer it into the shape of a sword.'), ctrl: L('盛り上がりをタップ。冷えたら熱し直す', 'Tap the high spots; reheat when cool'), no: '三', title: L('素延べ・火造り', 'Drawing Out & Shaping'), yomi: L('すのべ・ひづくり', 'Sunobe · Hizukuri'), run: stageShape,
-    intro: L('造り込んだ鋼を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。',
-      'The bar is drawn out long and thin (<strong>sunobe</strong>), then the spine, ridge and edge are hammered in and the tip formed (<strong>hizukuri</strong>). The sword’s shape is mostly decided here.') },
-  { id: 'clay', how: L('刀身に土を塗り、刃文の線を描く。', 'Coat the blade in clay and draw the hamon.'), ctrl: L('刀身をなぞる', 'Trace along the blade'), no: '四', title: L('土置き', 'Clay Coating'), yomi: L('つちおき', 'Tsuchioki'), run: stageClay,
-    intro: L('粘土・炭の粉・砥石の粉を混ぜた<strong>焼刃土</strong>を刀身に塗る。刃側は薄く、棟側は厚く置くことで、焼入れの冷え方に差が生まれ、硬い刃と粘り強い地、そして<strong>刃文</strong>が生まれる。',
-      'A clay mix is spread on the blade — thin on the edge, thick on the spine. This makes the edge cool faster when quenched, creating a hard edge, a resilient body, and the <strong>hamon</strong> (temper line).') },
-  { id: 'quench', how: L('熱した刀を水に入れ、刃を硬くする。', 'Plunge the hot blade into water to harden it.'), ctrl: L('「月の出の色」でタップ', 'Tap at the “rising-moon” color'), no: '五', title: L('焼入れ', 'Quenching'), yomi: L('やきいれ', 'Yaki-ire'), run: stageQuench,
-    intro: L('刀鍛冶の最も緊張する瞬間。火の色を見極めるため鍛冶場を暗くし、刀身を均一に熱して一気に水へ入れる。急冷で刃が硬化し、日本刀特有の<strong>反り</strong>が生まれる。',
-      'The most tense moment for a swordsmith. The forge is darkened to judge the glow, and the blade is plunged into water. The rapid cooling hardens the edge and creates the katana’s signature <strong>curve</strong>.') },
-  { id: 'polish', how: L('砥石で研ぎ、刃文を浮かび上がらせる。', 'Polish to bring out the hamon.'), ctrl: L('一定の速さで左右にこする', 'Rub left and right at a steady speed'), no: '六', title: L('研ぎ', 'Polishing'), yomi: L('とぎ', 'Togi'), run: stagePolish,
-    intro: L('鍛冶押しを終えた刀は<strong>研師</strong>の手に渡る。荒砥から仕上砥まで十数種の砥石を使い分け、刀の姿を整え、地鉄の肌と刃文の美しさを引き出していく。',
-      'The blade goes to a <strong>polisher</strong>, who works through a series of stones from coarse to fine, refining the shape and revealing the beauty of the steel grain and hamon.') },
-  { id: 'mei', how: L('茎に名を刻んで完成。', 'Carve your name on the tang to finish.'), ctrl: L('名前を入力', 'Enter the names'), no: '七', title: L('銘切り', 'Signing'), yomi: L('めいきり', 'Mei-kiri'), run: stageMei,
-    intro: L('茎に鑢目をかけ、<strong>鏨</strong>で刀工の名（銘）と年紀を刻む。銘は刀匠がその出来に責任を持つ証である。',
-      'The smith files the tang and uses a <strong>chisel</strong> to carve his name (mei) and the date — a pledge of responsibility for the work.') }
+  { id: 'katana', no: '一', title: L('作刀', 'Forge a Katana'), yomi: L('さくとう', 'Sakutō'), run: stageKatana,
+    intro: L('師匠の小槌が<strong>「トン」</strong>と鳴ったら、続けて大鎚で<strong>「カン」</strong>と打つ。<br>叩くだけで、鍛錬・造り込み・打ち延ばしを経て、最後は焼入れで「ジュワッ」。',
+      'When the master’s small hammer goes <strong>“tonk”</strong>, answer with your big hammer — <strong>“KAN!”</strong><br>Just keep striking: forge, laminate and draw out the blade, then quench it with a hiss.') }
 ];

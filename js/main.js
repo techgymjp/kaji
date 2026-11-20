@@ -25,7 +25,7 @@ function saveKura(list) {
 function renderHud(active) {
   hud.hidden = active < 0;
   stepsEl.innerHTML = '';
-  STAGES.forEach((s, i) => {
+  SECTIONS.forEach((s, i) => {
     const li = el('li', i < active ? 'done' : i === active ? 'now' : '', `<span>${s.no}</span><em>${s.title}</em>`);
     stepsEl.append(li);
   });
@@ -43,7 +43,7 @@ function showTitle() {
     <p class="kicker">${L('日本刀づくり', 'THE ART OF THE JAPANESE SWORD')}</p>
     <h1 class="logo"><span>刀</span><span>鍛</span><span>冶</span></h1>
     ${EN ? '<p class="logo-en">KATANA KAJI</p>' : ''}
-    <p class="lead">${L('玉鋼を鍛え、組み、焼き、研ぐ。<br>刀匠の七つの工程をたどり、世界に一振りの日本刀を打て。', 'Forge, laminate, quench and polish.<br>Follow the seven steps of a master swordsmith and create a one-of-a-kind katana.')}</p>`;
+    <p class="lead">${L('叩いて、叩いて、叩いて——ジュワッ。<br>師匠の小槌に合わせて大鎚を振るい、世界に一振りの日本刀を打て。', 'Strike, strike, strike — hiss.<br>Swing the big hammer to your master’s rhythm and forge a one-of-a-kind katana.')}</p>`;
   wrap.append(c);
   const menu = el('div', 'menu');
   menu.append(
@@ -84,10 +84,10 @@ function showHowto() {
   Music.setMood('calm');
   const wrap = el('section', 'page howto-page');
   wrap.append(el('h2', '', L('遊び方', 'How to Play')));
-  wrap.append(el('p', 'howto-lead', L('7つの工程で日本刀を打ち、最後に鑑定を受けます。', 'Make a katana in 7 steps, then have it appraised.')));
+  wrap.append(el('p', 'howto-lead', L('操作は<strong>叩くだけ</strong>。師匠の小槌が「トン」と鳴ったら、半拍後に「カン」と打つ。画面のどこを叩いてもよい。',
+    'The only control is <strong>striking</strong>. When the master’s small hammer goes “tonk”, strike “KAN!” half a beat later — tap anywhere.')));
   const list = el('ol', 'howto');
-  STAGES.forEach(s => list.append(el('li', '',
-    `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p><p class="ctrl"><span>${L('操作', 'Control')}</span>${s.ctrl}</p>`)));
+  SECTIONS.forEach(s => list.append(el('li', '', `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p>`)));
   wrap.append(list);
   wrap.append(btn(L('戻る', 'Back'), 'big', () => showTitle()));
   screen.append(wrap);
@@ -96,19 +96,24 @@ function showHowto() {
 /* ---------------- ゲーム進行 ---------------- */
 function newGame() {
   Sound.init();
-  state = { scores: {}, comments: {}, seed: Math.floor(Math.random() * 1e9) };
+  let smith = '';
+  try { smith = localStorage.getItem('kaji.smith') || ''; } catch (e) { /* 無視 */ }
+  state = {
+    scores: {}, comments: {}, seed: Math.floor(Math.random() * 1e9),
+    name: SWORD_NAMES[Math.floor(Math.random() * SWORD_NAMES.length)], smith, date: reiwaDate()
+  };
   runStage(0);
 }
 
-const STAGE_MOOD = { forge: 'forge', tsukuri: 'forge', shape: 'forge', clay: 'zen', quench: 'tense', polish: 'zen', mei: 'zen' };
+const STAGE_MOOD = { katana: 'forge' };
 function runStage(i) {
   clearScreen();
   Music.setMood(STAGE_MOOD[STAGES[i].id] || 'calm');
-  renderHud(i);
+  renderHud(0);
   const s = STAGES[i];
   const card = el('section', 'intro');
   card.innerHTML = `
-    <p class="stage-no">${L(`第${s.no}の工程`, `STEP ${STAGES.indexOf(s) + 1}`)}</p>
+    <p class="stage-no">${L('作刀', 'FORGING')}</p>
     <h2>${s.title}</h2>
     <p class="yomi">${s.yomi}</p>
     <p class="body">${s.intro}</p>`;
@@ -119,14 +124,14 @@ function runStage(i) {
 
   function start() {
     clearScreen();
-    renderHud(i);
+    renderHud(0);
     const root = el('section', 'stage');
-    root.append(el('h2', 'stage-title', `<span>${s.no}</span>${s.title}`));
     screen.append(root);
     scope = makeScope();
     let called = false;
     s.run({
       root, scope, state,
+      section: k => renderHud(k),
       finish(score, comment) {
         if (called) return;
         called = true;
@@ -134,7 +139,8 @@ function runStage(i) {
         state.comments[s.id] = comment;
         scope.dispose(); scope = null;
         Sound.stopLoops();
-        showStageResult(i, score, comment);
+        if (i === STAGES.length - 1 && score == null) showAppraisal();
+        else showStageResult(i, score, comment);
       }
     });
   }
@@ -181,10 +187,10 @@ const RANKS = [
 
 function computeResult(st) {
   const sc = st.scores;
-  const f = sc.forge ?? 50, k = sc.tsukuri ?? 50, s = sc.shape ?? 50, h = sc.clay ?? 50, q = sc.quench ?? 50, p = sc.polish ?? 50;
-  let sharp = 0.35 * f + 0.1 * k + 0.35 * q + 0.2 * p;
-  let tough = (0.35 * f + 0.35 * k + 0.2 * s + 0.1 * q) * (st.methodTough ?? 1);
-  let beauty = 0.3 * h + 0.35 * p + 0.15 * s + 0.2 * q;
+  const kw = sc.kawa ?? 50, sh = sc.shin ?? 50, k = sc.tsukuri ?? 50, n = sc.nobashi ?? 50, q = sc.quench ?? 50;
+  let sharp = 0.4 * kw + 0.15 * k + 0.45 * q;
+  let tough = 0.25 * kw + 0.35 * sh + 0.3 * k + 0.1 * n;
+  let beauty = 0.3 * kw + 0.35 * n + 0.35 * q;
   if (st.crack) { tough *= 0.35; sharp *= 0.7; beauty *= 0.75; }
   const total = Math.round((sharp + tough + beauty) / 3);
   let rank = RANKS.find(r => total >= r[0]);
@@ -194,7 +200,7 @@ function computeResult(st) {
 
 function appraiserWords(st, r) {
   const sc = st.scores;
-  const names = EN ? { forge: 'forging', tsukuri: 'lamination', shape: 'shape', clay: 'clay work', quench: 'quench', polish: 'polish' } : { forge: '鍛錬', tsukuri: '造り込み', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
+  const names = EN ? { kawa: 'skin-steel forging', shin: 'core steel', tsukuri: 'lamination', nobashi: 'drawing out', quench: 'quench' } : { kawa: '皮鉄の鍛錬', shin: '心鉄', tsukuri: '造り込み', nobashi: '打ち延ばし', quench: '焼入れ' };
   const ent = Object.entries(sc).filter(([k]) => names[k]);
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
@@ -205,7 +211,7 @@ function appraiserWords(st, r) {
     if (worst[1] < 70) parts.push(`The ${names[worst[0]]} leaves room for improvement. `);
     if (st.method === 'maru') parts.push('Being maru-gitae, it naturally lacks resilience. ');
     const hn = st.hamonName === '自作' ? 'your own hamon' : `the ${term(st.hamonName)} hamon`;
-    parts.push(`Folded ${st.folds} times, the ${term(st.grainName || '板目肌')} is ${st.folds >= 10 ? 'tight and refined' : 'somewhat coarse'}, and ${hn} is ${(st.hamonStrength ?? 1) > 0.7 ? 'bright and vivid' : 'faint'}.`);
+    parts.push(`The ${term(st.grainName || '板目肌')} is ${(st.purity ?? 0.8) >= 0.85 ? 'tight and refined' : 'somewhat coarse'}, and ${hn} is ${(st.hamonStrength ?? 1) > 0.7 ? 'bright and vivid' : 'faint'}.`);
     return parts.join('');
   }
   if (st.crack) parts.push('惜しむらくは刃に焼割れがある。これでは実戦には使えぬ。');
@@ -213,7 +219,7 @@ function appraiserWords(st, r) {
   if (worst[1] < 70) parts.push(`${names[worst[0]]}にはまだ工夫の余地があろう。`);
   const hn = st.hamonName === '自作' ? '独自の刃文' : `${st.hamonName}の刃文`;
   if (st.method === 'maru') parts.push('丸鍛えゆえ、粘りに欠けるのは致し方なし。');
-  parts.push(`地鉄は${st.folds}回の折り返しで${st.folds >= 10 ? 'よく詰んだ' : 'やや肌立った'}${st.grainName || '板目肌'}、${hn}が${(st.hamonStrength ?? 1) > 0.7 ? '冴えている' : '淡く沈んでいる'}。`);
+  parts.push(`地鉄は${(st.purity ?? 0.8) >= 0.85 ? 'よく詰んだ' : 'やや肌立った'}${st.grainName || '板目肌'}、${hn}が${(st.hamonStrength ?? 1) > 0.7 ? '冴えている' : '淡く沈んでいる'}。`);
   return parts.join('');
 }
 
@@ -224,7 +230,7 @@ function swordOptions(rec, x, y, length, width) {
     hamon: rec.hamon,
     hamonStrength: rec.hamonStrength ?? 1,
     polish: clamp((rec.polish ?? 60) / 100, 0.15, 1),
-    folds: rec.folds ?? 12,
+    folds: rec.jiFolds ?? rec.folds ?? 12,
     grain: rec.grain,
     crack: rec.crack,
     scratches: rec.scratches || 0,
@@ -235,7 +241,7 @@ function swordOptions(rec, x, y, length, width) {
 function showAppraisal() {
   clearScreen();
   Music.setMood('finale');
-  renderHud(STAGES.length);
+  renderHud(SECTIONS.length);
   const r = computeResult(state);
   const rec = {
     id: Date.now(),
@@ -243,7 +249,7 @@ function showAppraisal() {
     rank: r.rank[1], rankYomi: r.rank[2], total: r.total,
     sharp: r.sharp, tough: r.tough, beauty: r.beauty,
     hamon: state.hamon, hamonName: state.hamonName, hamonStrength: state.hamonStrength,
-    folds: state.folds, grain: state.grain, grainName: state.grainName, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
+    folds: state.folds, jiFolds: state.jiFolds, grain: state.grain, grainName: state.grainName, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
     sori: state.sori, seed: state.seed, quenchT: state.quenchT, carbon: state.carbon,
     scores: state.scores
   };
@@ -252,11 +258,16 @@ function showAppraisal() {
   const saved = saveKura(list.slice(0, 60));
 
   const wrap = el('section', 'appraisal');
-  wrap.innerHTML = EN
-    ? `<p class="kicker">CERTIFICATE OF APPRAISAL</p><h2 class="sword-name">“${term(rec.name)}”</h2>
-    <p class="mei">Signed: ${rec.smith ? 'made by ' + rec.smith : 'unsigned (mumei)'}</p>`
-    : `<p class="kicker">鑑定書</p><h2 class="sword-name">号「${rec.name}」</h2>
-    <p class="mei">銘　${rec.smith ? rec.smith + '作' : '無銘'}　${rec.smith ? '／ ' + rec.date : ''}</p>`;
+  const head = el('div', 'appraisal-head');
+  const renderHead = () => {
+    head.innerHTML = EN
+      ? `<p class="kicker">CERTIFICATE OF APPRAISAL</p><h2 class="sword-name">“${term(rec.name)}”</h2>
+      <p class="mei">Signed: ${rec.smith ? 'made by ' + rec.smith : 'unsigned (mumei)'}</p>`
+      : `<p class="kicker">鑑定書</p><h2 class="sword-name">号「${rec.name}」</h2>
+      <p class="mei">銘　${rec.smith ? rec.smith + '作' : '無銘'}　${rec.smith ? '／ ' + rec.date : ''}</p>`;
+  };
+  renderHead();
+  wrap.append(head);
   const [c, g] = makeCanvas(1000, 250, 'sword-canvas');
   wrap.append(c);
   const swordOpt = swordOptions(rec, 250, 140, 700, 64);
@@ -277,16 +288,40 @@ function showAppraisal() {
   const [PO, PC] = EN ? [' (', ')'] : ['（', '）'];
   const sc = state.scores;
   detail.innerHTML = `
-    <dt>${L('鍛錬', 'Forging')}</dt><dd>${sc.forge}${PO}${L(`${state.folds}回・${state.grainName || '板目肌'}`, `${state.folds} folds, ${term(state.grainName || '板目肌')}`)}${PC}</dd>
-    <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}${PO}${term(state.methodName)}${PC}</dd><dt>${L('火造り', 'Shaping')}</dt><dd>${sc.shape}</dd><dt>${L('土置き', 'Clay')}</dt><dd>${sc.clay}${PO}${term(state.hamonName)}${PC}</dd>
-    <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd><dt>${L('研ぎ', 'Polish')}</dt><dd>${sc.polish}</dd>`;
+    <dt>${L('皮鉄', 'Skin')}</dt><dd>${sc.kawa}${PO}${L(`折り返し${state.folds}回`, `${state.folds} folds`)}${PC}</dd>
+    <dt>${L('心鉄', 'Core')}</dt><dd>${sc.shin}</dd>
+    <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}</dd>
+    <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${sc.nobashi}</dd>
+    <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd>
+    <dt>${L('刃文', 'Hamon')}</dt><dd>${term(state.hamonName)}</dd>`;
   stats.append(detail);
   body.append(seal, stats);
   wrap.append(body);
   wrap.append(el('p', 'verdict', `<strong>${L('鑑定士いわく：', 'The appraiser says: ')}</strong>${r.rank[3]}${appraiserWords(state, r)}`));
   if (!saved) wrap.append(el('p', 'note', L('※ ブラウザの設定により、蔵への保存ができませんでした。', '* Your browser settings prevented saving to the collection.')));
   else wrap.append(el('p', 'note', L('この刀は蔵に納められた。', 'This sword has been added to your collection.')));
-  wrap.append(Share.buttons(rec, swordOpt));
+  // 銘と号（任意）
+  const naming = el('div', 'naming');
+  naming.innerHTML = `
+    <label>${L('号（刀の名）', 'Sword name')}<input id="nm-name" maxlength="${EN ? 18 : 10}" value=""></label>
+    <label>${L('刀工名（銘）', 'Your name')}<input id="nm-smith" maxlength="${EN ? 14 : 8}" placeholder="${L('空欄は無銘', 'blank = unsigned')}" value=""></label>`;
+  const nmName = naming.querySelector('#nm-name'), nmSmith = naming.querySelector('#nm-smith');
+  nmName.value = term(rec.name); nmSmith.value = rec.smith || '';
+  let shareBox = Share.buttons(rec, swordOpt);
+  const applyName = () => {
+    const v = nmName.value.trim();
+    if (v && v !== term(rec.name)) rec.name = v;
+    rec.smith = nmSmith.value.trim();
+    try { localStorage.setItem('kaji.smith', rec.smith); } catch (e) { /* 無視 */ }
+    const l = loadKura(); const ix = l.findIndex(x => x.id === rec.id);
+    if (ix >= 0) { l[ix].name = rec.name; l[ix].smith = rec.smith; saveKura(l); }
+    renderHead();
+    const nb = Share.buttons(rec, swordOpt); shareBox.replaceWith(nb); shareBox = nb;
+  };
+  nmName.addEventListener('change', applyName);
+  nmSmith.addEventListener('change', applyName);
+  wrap.append(naming);
+  wrap.append(shareBox);
   const menu = el('div', 'menu');
   menu.append(btn(L('もう一振り打つ', 'Forge Another'), 'primary', () => newGame()), btn(L('蔵を見る', 'Collection'), '', () => showKura()), btn(L('タイトルへ', 'Title'), '', () => showTitle()));
   wrap.append(menu);
