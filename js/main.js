@@ -198,7 +198,7 @@ function appraiserWords(st, r) {
   if (worst[1] < 70) parts.push(`${names[worst[0]]}にはまだ工夫の余地があろう。`);
   const hn = st.hamonName === '自作' ? '独自の刃文' : `${st.hamonName}の刃文`;
   if (st.method === 'maru') parts.push('丸鍛えゆえ、粘りに欠けるのは致し方なし。');
-  parts.push(`地鉄は${st.folds}回の折り返しで${st.folds >= 12 ? 'よく詰み' : 'やや肌立ち'}、${hn}が${(st.hamonStrength ?? 1) > 0.7 ? '冴えている' : '淡く沈んでいる'}。`);
+  parts.push(`地鉄は${st.folds}回の折り返しで${st.folds >= 10 ? 'よく詰んだ' : 'やや肌立った'}${st.grainName || '板目肌'}、${hn}が${(st.hamonStrength ?? 1) > 0.7 ? '冴えている' : '淡く沈んでいる'}。`);
   return parts.join('');
 }
 
@@ -210,6 +210,7 @@ function swordOptions(rec, x, y, length, width) {
     hamonStrength: rec.hamonStrength ?? 1,
     polish: clamp((rec.polish ?? 60) / 100, 0.15, 1),
     folds: rec.folds ?? 12,
+    grain: rec.grain,
     crack: rec.crack,
     scratches: rec.scratches || 0,
     seed: rec.seed || 1
@@ -226,7 +227,7 @@ function showAppraisal() {
     rank: r.rank[1], rankYomi: r.rank[2], total: r.total,
     sharp: r.sharp, tough: r.tough, beauty: r.beauty,
     hamon: state.hamon, hamonName: state.hamonName, hamonStrength: state.hamonStrength,
-    folds: state.folds, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
+    folds: state.folds, grain: state.grain, grainName: state.grainName, method: state.methodName, crack: !!state.crack, polish: state.polish, scratches: state.scratches,
     sori: state.sori, seed: state.seed, quenchT: state.quenchT, carbon: state.carbon,
     scores: state.scores
   };
@@ -256,7 +257,7 @@ function showAppraisal() {
   const detail = el('dl', 'detail');
   const sc = state.scores;
   detail.innerHTML = `
-    <dt>鍛錬</dt><dd>${sc.forge}（${state.folds}回・${(2 ** state.folds).toLocaleString()}層）</dd>
+    <dt>鍛錬</dt><dd>${sc.forge}（${state.folds}回・${state.grainName || '板目肌'}）</dd>
     <dt>造り込み</dt><dd>${sc.tsukuri}（${state.methodName}）</dd><dt>火造り</dt><dd>${sc.shape}</dd><dt>土置き</dt><dd>${sc.clay}（${state.hamonName}）</dd>
     <dt>焼入れ</dt><dd>${sc.quench}（約${state.quenchT}℃）</dd><dt>研ぎ</dt><dd>${sc.polish}</dd>`;
   stats.append(detail);

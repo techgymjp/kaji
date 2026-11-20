@@ -77,6 +77,8 @@ const Sound = (() => {
       noise(0.08, 'bandpass', 2600, 0.9, 0.5 * power);
       tone(110, 0.18, 0.35 * power, 'triangle');
     },
+    /* 師匠の小槌：軽く澄んだ「コン」 */
+    tick() { tone(2650, 0.09, 0.12); tone(1720, 0.12, 0.07); noise(0.03, 'highpass', 3500, 0.7, 0.12); },
     thud() { noise(0.15, 'lowpass', 300, 0.7, 0.5); tone(70, 0.2, 0.3, 'sine'); },
     sizzle(dur = 2.6) {
       if (!ac) return;
