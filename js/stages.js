@@ -541,14 +541,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     else if (sec === 'nobashi') drawNobashi();
     else if (sec === 'yaki') { drawYaki(dt); return; }
 
-    if (masterFx > 0) {
-      g.save();
-      g.translate(masterX + 26, masterY - 18 - masterFx * 26);
-      g.rotate(-0.6);
-      g.fillStyle = '#4a3220'; g.fillRect(8, -3, 70, 6);
-      g.fillStyle = '#5c5e64'; g.fillRect(-10, -9, 20, 18);
-      g.restore();
-    }
+    drawMaster();
     if (hammerFx && hammerFx.t < 0.25) {
       const k = hammerFx.t / 0.25;
       const hy = hammerFx.y - 46 - k * 70;
@@ -562,6 +555,39 @@ function stageKatana({ root, scope, state, finish, section }) {
       g.beginPath(); g.arc(hammerFx.x, hammerFx.y, 26 + k * 30, 0, TAU); g.fill();
       g.restore();
     }
+  }
+
+  /* 師匠の小槌：音の瞬間に槌の頭が鉄の表面に当たる。前に振り上げ、当たったら跳ね返る */
+  function drawMaster() {
+    if (mode !== 'play') return;
+    const now = songT();
+    let near = null, nd = 1e9;
+    for (const n of chart) {
+      if (n.who !== 'M') continue;
+      const d = now - n.t;
+      if (Math.abs(d) < Math.abs(nd)) { nd = d; near = n; }
+      if (n.t > now + 0.5) break;
+    }
+    if (!near || nd < -0.32 || nd > 0.4) return;
+    const UP = 0.22, DOWN = 0.28;
+    // lift：0 で接地、1 で振り上げ切り
+    const lift = nd < 0 ? Math.pow(clamp(-nd / UP, 0, 1), 0.6) : smooth(clamp(nd / DOWN, 0, 1)) * 0.8;
+    const fade = nd > 0.25 ? clamp(1 - (nd - 0.25) / 0.15, 0, 1) : nd < -0.26 ? clamp((0.32 + nd) / 0.06, 0, 1) : 1;
+    const x = targetX(near.step), y = topY(near.step);
+    const HW = 10, HH = 18;                         // 槌の頭（幅・高さの半分）
+    const ang = -0.35 - lift * 0.55;                // 柄の角度（振り上げるほど立つ）
+    g.save();
+    g.globalAlpha = fade;
+    // 振り上げるほど頭は上に。接地の瞬間は頭の底面 = 鉄の表面
+    g.translate(x, y - HH / 2 - lift * 34);
+    g.rotate(lift * 0.25);
+    g.fillStyle = '#4a3220';
+    g.save(); g.rotate(ang); g.fillRect(HW - 2, -3, 74, 6); g.restore();
+    const hg = g.createLinearGradient(-HW, 0, HW, 0);
+    hg.addColorStop(0, '#3a3c42'); hg.addColorStop(0.5, '#6a6c72'); hg.addColorStop(1, '#2a2b30');
+    g.fillStyle = hg;
+    g.fillRect(-HW, -HH / 2, HW * 2, HH);
+    g.restore();
   }
 
   /* カメラ：作業中の鉄に寄る */
@@ -685,6 +711,7 @@ function stageKatana({ root, scope, state, finish, section }) {
         if (!n.shown && now >= n.t) {
           n.shown = true;
           masterFx = 1; masterX = targetX(n.step); masterY = topY(n.step);
+          parts.spark(masterX, masterY, 5, { T: T + 40, min: 60, max: 220, life: 0.5 });
         }
         if (n.t > now + 0.3) break;
       }
