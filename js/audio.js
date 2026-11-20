@@ -103,6 +103,18 @@ const Sound = (() => {
       noise(0.03, 'highpass', 5000, 0.7, 0.18);       // 打った瞬間の明るい当たり
       tone(110, 0.16, 0.3, 'triangle');                 // 打った重み
     },
+    /* 拍子がずれた一打：響かない鈍い「ゴツッ」 */
+    thunk() {
+      if (!ac) return;
+      const t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.09);
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.45, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.15);
+      noise(0.07, 'lowpass', 520, 0.8, 0.45, 0.002);   // 鈍い当たり
+      tone(620, 0.05, 0.05, 'triangle');                 // ごく短い金属感（響かせない）
+    },
     thud() { noise(0.15, 'lowpass', 300, 0.7, 0.5); tone(70, 0.2, 0.3, 'sine'); },
     sizzle(dur = 2.6) {
       if (!ac) return;

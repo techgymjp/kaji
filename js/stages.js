@@ -265,7 +265,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       const x = targetX(st);
       hammerFx = { x, y: topY(st), t: 0 };
       shake = 2;
-      Sound.clang(0.3, true);
+      Sound.thunk();
       combo = 0;
       lastJudge = { text: L('空振り', 'Whiff'), t: time, q: 0 };
     }
@@ -281,7 +281,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       hammerFx = { x, y, t: 0 };
       shake = 3 + q * 7;
       T -= 9;
-      if (q === 1) Sound.clangPerfect(); else Sound.clang(0.45 + q * 0.55, false);
+      if (q === 1) Sound.clangPerfect(); else if (q >= 0.65) Sound.clang(1, false); else Sound.thunk();
       parts.spark(x, y, Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
       parts.flake(x, y, Math.round(3 + q * 7));
     }
