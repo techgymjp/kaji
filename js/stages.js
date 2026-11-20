@@ -310,7 +310,6 @@ function stageKatana({ root, scope, state, finish, section }) {
   function drawShin() {
     const h = 4400 / shinLen;
     Sword.drawHotBar(g, CX - shinLen / 2, AY - h, shinLen, h, T - 40, { seed: 77, time, scale: Math.round(90 * (1 - Math.min(1, shinTight))) });
-    label(L('心鉄', 'Core'), CX, AY - h - 26);
   }
 
   function label(text, x, y) {
@@ -321,43 +320,76 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   /* 造り込み：断面図。皮鉄の板が叩かれてU字になり、心鉄を包む */
   function drawTsukuri() {
-    const kc = heatRGB(T), sc = heatRGB(T - 120), gl = heatGlow(T);
-    const piece = (fn, col) => {
-      g.save();
-      g.shadowColor = rgbStr(col, 0.7 * gl); g.shadowBlur = 16;
-      g.fillStyle = rgbStr(col);
-      g.beginPath(); fn(); g.fill();
-      g.restore();
-      g.strokeStyle = rgbStr(heatRGB(T - 320), 0.9); g.lineWidth = 1.2;
-      g.beginPath(); fn(); g.stroke();
-    };
+    const kc = heatRGB(T), sc = heatRGB(T - 150), gl = heatGlow(T);
     const BASE = 60, TH = 24, WL = 80;
     const ang = (Math.PI / 2) * smooth(bendK) + closeK * 0.05;
-    // 底
-    piece(() => g.rect(CX - BASE, AY - TH, BASE * 2, TH), kc);
-    // 左右の壁（底の端を軸に起き上がる）
-    [[-1, CX - BASE], [1, CX + BASE]].forEach(([side, px]) => {
-      piece(() => {
-        const pts = side < 0 ? [[-WL, 0], [0, 0], [0, -TH], [-WL, -TH]] : [[0, 0], [WL, 0], [WL, -TH], [0, -TH]];
-        const a = side < 0 ? ang : -ang;
-        pts.forEach(([x, y], i) => {
-          const X = px + x * Math.cos(a) - y * Math.sin(a), Y = AY + x * Math.sin(a) + y * Math.cos(a);
-          i ? g.lineTo(X, Y) : g.moveTo(X, Y);
-        });
-        g.closePath();
-      }, kc);
-    });
-    // 心鉄
+    /* 皮鉄の板：(px, py) を軸に角度 a で置く。長さ方向に折り返しの層の縞が走る */
+    const slab = (px, py, x0, x1, a) => {
+      g.save();
+      g.translate(px, py); g.rotate(a);
+      g.save();
+      g.shadowColor = rgbStr(kc, 0.7 * gl); g.shadowBlur = 16;
+      g.fillStyle = rgbStr(kc);
+      g.fillRect(x0, -TH, x1 - x0, TH);
+      g.restore();
+      g.strokeStyle = rgbStr(heatRGB(T - 260), 0.55); g.lineWidth = 0.8;
+      for (let i = 1; i < 6; i++) {
+        const y = -TH * i / 6;
+        g.beginPath(); g.moveTo(x0 + 1, y + Math.sin(i * 2.3) * 0.6); g.lineTo(x1 - 1, y - Math.sin(i * 1.7) * 0.6); g.stroke();
+      }
+      g.strokeStyle = rgbStr(heatRGB(T - 320), 0.9); g.lineWidth = 1.2;
+      g.strokeRect(x0, -TH, x1 - x0, TH);
+      g.restore();
+    };
+    slab(CX - BASE, AY, 0, BASE * 2, 0);
+    slab(CX - BASE, AY, -WL, 0, ang);
+    slab(CX + BASE, AY, 0, WL, -ang);
+    // 心鉄：縞のない、やや暗く柔らかな塊
     if (coreIn > 0) {
       const cy = lerp(AY - TH - 76 - 150, AY - TH - 76, smooth(coreIn));
-      piece(() => g.rect(CX - 32 + coreOff, cy, 64, 76), sc);
-      if (coreIn >= 1 && tseam > 0.05) {
-        g.strokeStyle = `rgba(30,10,4,${0.8 * tseam})`; g.lineWidth = 2;
-        g.strokeRect(CX - 32 + coreOff, cy, 64, 76);
-      }
-      label(L('心鉄', 'Core'), CX + coreOff, cy + 44);
+      const x = CX - 32 + coreOff;
+      g.save();
+      g.shadowColor = rgbStr(sc, 0.6 * gl); g.shadowBlur = 14;
+      g.fillStyle = rgbStr(sc);
+      g.beginPath(); g.roundRect ? g.roundRect(x, cy, 64, 76, 6) : g.rect(x, cy, 64, 76); g.fill();
+      g.restore();
+      const cg = g.createRadialGradient(x + 32, cy + 38, 4, x + 32, cy + 38, 44);
+      cg.addColorStop(0, rgbStr(heatRGB(T - 90), 0.6)); cg.addColorStop(1, rgbStr(sc, 0));
+      g.fillStyle = cg; g.fillRect(x, cy, 64, 76);
+      g.strokeStyle = coreIn >= 1 && tseam > 0.05 ? `rgba(30,10,4,${0.4 + 0.5 * tseam})` : rgbStr(heatRGB(T - 320), 0.9);
+      g.lineWidth = 1.5;
+      g.beginPath(); g.roundRect ? g.roundRect(x, cy, 64, 76, 6) : g.rect(x, cy, 64, 76); g.stroke();
     }
-    label(L('皮鉄', 'Skin'), CX - 110 + bendK * 30, AY + 24);
+  }
+
+  /* 合図の絵（文字の代わり） */
+  function drawIcon(kind, x, y, s) {
+    g.save();
+    g.translate(x, y); g.scale(s, s);
+    g.strokeStyle = '#ffd77a'; g.fillStyle = '#ffd77a'; g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round';
+    const arrowHead = (x1, y1, ang) => {
+      g.beginPath();
+      g.moveTo(x1, y1);
+      g.lineTo(x1 - 7 * Math.cos(ang - 0.5), y1 - 7 * Math.sin(ang - 0.5));
+      g.lineTo(x1 - 7 * Math.cos(ang + 0.5), y1 - 7 * Math.sin(ang + 0.5));
+      g.closePath(); g.fill();
+    };
+    if (kind === 'notch') {                 // 鏨
+      g.beginPath(); g.moveTo(-4, -16); g.lineTo(4, -16); g.lineTo(2, 6); g.lineTo(0, 11); g.lineTo(-2, 6); g.closePath(); g.fill();
+      g.fillRect(-6, -22, 12, 7);
+    } else if (kind === 'fold') {           // 端を持ち上げて折り返す矢印
+      g.beginPath(); g.arc(-2, 4, 12, 0, -Math.PI, true); g.stroke();
+      arrowHead(-14, 6, Math.PI / 2);
+    } else if (kind === 'bend') {           // 起き上がる
+      g.beginPath(); g.moveTo(0, 10); g.lineTo(0, -10); g.stroke();
+      arrowHead(0, -13, -Math.PI / 2);
+    } else if (kind === 'close') {          // 内側へ締める
+      g.beginPath(); g.moveTo(-14, 0); g.lineTo(-3, 0); g.moveTo(14, 0); g.lineTo(3, 0); g.stroke();
+      arrowHead(-1, 0, 0); arrowHead(1, 0, Math.PI);
+    } else if (kind === 'tip') {            // 切先
+      g.beginPath(); g.moveTo(-14, -5); g.lineTo(6, -5); g.quadraticCurveTo(14, -5, 14, 6); g.lineTo(-14, 6); g.closePath(); g.fill();
+    }
+    g.restore();
   }
 
   function drawNobashi() {
@@ -440,11 +472,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       g.beginPath(); g.arc(target.x, ty, (16 + k * 60) * u, 0, TAU); g.stroke();
       g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5 * u;
       g.beginPath(); g.arc(target.x, ty, 16 * u, 0, TAU); g.stroke();
-      const lab = { notch: L('鏨', 'cut'), fold: L('折', 'fold'), bend: L('曲', 'bend'), close: L('締', 'press'), tip: L('切先', 'tip') }[st.k];
-      if (lab) {
-        g.font = `bold ${Math.round(fs(c, 22, 1.8) / cam.z)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffd77a';
-        g.fillText(lab, target.x, ty - (34 + k * 20) * u);
-      }
+      if (['notch', 'fold', 'bend', 'close', 'tip'].includes(st.k)) drawIcon(st.k, target.x, ty - (42 + k * 20) * u, u * 1.1);
     }
     if (masterFx > 0 && target) {
       const ty = topY(target.x);
