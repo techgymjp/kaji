@@ -10,6 +10,7 @@ const Music = (() => {
   let nextKoto = 0, nextFlute = 0, nextDrum = 0, drumStep = 0;
   let drone = null;
   let fluteDeg = 2;
+  let groove = null;            // 譜面と同じ拍で太鼓を刻む { t0, beat, next }
   try { enabled = localStorage.getItem('kaji.bgm') !== 'off'; } catch (e) { /* 既定は入 */ }
 
   const ROOT = 146.83;                 // D3
@@ -25,7 +26,8 @@ const Music = (() => {
     forge:  { koto: null,     flute: [10, 18], drum: 'forge', drone: 0.9,  vol: 0.24, fluteOct: 0 },
     zen:    { koto: [3.5, 7], flute: [9, 15], drum: null,    drone: 0.35, vol: 0.28 },
     tense:  { koto: null,     flute: null,    drum: 'heart', drone: 1,    vol: 0.3 },
-    finale: { koto: [1.2, 2.6], flute: [4, 7], drum: 'soft', drone: 0.55, vol: 0.36 }
+    finale: { koto: [1.2, 2.6], flute: [4, 7], drum: 'soft', drone: 0.55, vol: 0.36 },
+    groove: { koto: null,     flute: [12, 20], drum: null,    drone: 0.8,  vol: 0.3, fluteOct: 0 }
   };
 
   function makeReverb() {
@@ -149,6 +151,16 @@ const Music = (() => {
     g.connect(dry); g.connect(bus.rev);
   }
 
+  /* 太鼓の縁（カッ） */
+  function kaRim(t) {
+    const n = ac.createBufferSource(); n.buffer = noiseBuf();
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 3;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    n.connect(bp); bp.connect(g); g.connect(dry);
+    n.start(t); n.stop(t + 0.08);
+  }
+
   let nb = null;
   function noiseBuf() {
     if (nb) return nb;
@@ -194,6 +206,20 @@ const Music = (() => {
           t += dur + 0.05;
         }
         nextFlute = t + between(M.flute);
+      }
+    }
+    // 譜面に同期した太鼓：1拍目に強く、3拍目に弱く、2・4拍目に縁を軽く
+    if (groove) {
+      while (groove.next < ahead) {
+        const t = groove.next;
+        const b = Math.round((t - groove.t0) / groove.beat);
+        if (t >= now - 0.02 && b >= 0) {
+          const pos = ((b % 4) + 4) % 4;
+          if (pos === 0) taiko(t, 0.75);
+          else if (pos === 2) taiko(t, 0.35, 1.1);
+          else kaRim(t);
+        }
+        groove.next += groove.beat;
       }
     }
     // 太鼓
@@ -249,6 +275,13 @@ const Music = (() => {
       nextDrum = Math.min(nextDrum, now + 0.8);
       applyMood();
     },
+    /* 譜面の拍に合わせて太鼓を刻む（t0：1小節目の頭のオーディオ時刻） */
+    groove(t0, beat) {
+      if (!started) this.start();
+      groove = { t0, beat, next: t0 };
+      this.setMood('groove');
+    },
+    grooveOff() { groove = null; },
     get enabled() { return enabled; },
     toggle() {
       enabled = !enabled;

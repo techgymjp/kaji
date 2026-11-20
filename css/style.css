@@ -182,7 +182,6 @@ kbd { font-family: inherit; font-size: .85em; border: 1px solid var(--line); bor
 .naming label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 14px; text-align: left; flex: 1; min-width: 200px; }
 .naming input { font: inherit; font-size: 20px; padding: 8px 12px; color: var(--ink); background: #120d0a; border: 1px solid var(--line); border-radius: 6px; }
 .naming input:focus { outline: none; border-color: var(--gold); }
-.btn.hit { min-width: 220px; font-size: 26px; }
 
 /* シェア */
 .share { margin: 18px auto 6px; max-width: 720px; }

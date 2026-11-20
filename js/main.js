@@ -84,8 +84,8 @@ function showHowto() {
   Music.setMood('calm');
   const wrap = el('section', 'page howto-page');
   wrap.append(el('h2', '', L('遊び方', 'How to Play')));
-  wrap.append(el('p', 'howto-lead', L('操作は<strong>叩くだけ</strong>。師匠の小槌が「トン」と鳴ったら、半拍後に「カン」と打つ。画面のどこを叩いてもよい。',
-    'The only control is <strong>striking</strong>. When the master’s small hammer goes “tonk”, strike “KAN!” half a beat later — tap anywhere.')));
+  wrap.append(el('p', 'howto-lead', L('操作は<strong>叩くだけ</strong>。師匠が1小節リズムを叩いて見せたら、次の1小節で<strong>同じリズムを返す</strong>。金の音符が左の輪に重なった瞬間に、画面のどこかを叩く。',
+    'The only control is <strong>striking</strong>. The master taps a rhythm for one bar; <strong>echo the same rhythm</strong> in the next. Tap anywhere as each gold note reaches the circle.')));
   const list = el('ol', 'howto');
   SECTIONS.forEach(s => list.append(el('li', '', `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p>`)));
   wrap.append(list);

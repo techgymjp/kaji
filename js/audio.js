@@ -79,6 +79,15 @@ const Sound = (() => {
       noise(0.08, 'bandpass', 2600, 0.9, 0.5 * power);
       tone(110, 0.18, 0.35 * power, 'triangle');
     },
+    /* 師匠の小槌を、オーディオ時刻 when に正確に鳴らす */
+    tickAt(when, vel = 1) {
+      if (!ac) return;
+      const at = Math.max(0, when - ac.currentTime);
+      tone(2650, 0.09, 0.12 * vel, 'sine', at); tone(1720, 0.12, 0.07 * vel, 'sine', at);
+      noise(0.03, 'highpass', 3500, 0.7, 0.12 * vel, 0.002, at);
+    },
+    /* 聞こえている音の時刻（出力遅延を差し引いたオーディオ時刻） */
+    now() { return ac ? ac.currentTime - (ac.outputLatency || 0) : performance.now() / 1000; },
     /* 師匠の小槌：軽く澄んだ「コン」 */
     tick() { tone(2650, 0.09, 0.12); tone(1720, 0.12, 0.07); noise(0.03, 'highpass', 3500, 0.7, 0.12); },
     thud() { noise(0.15, 'lowpass', 300, 0.7, 0.5); tone(70, 0.2, 0.3, 'sine'); },

@@ -86,7 +86,7 @@ const SECTIONS = [
  * ============================================================ */
 function stageKatana({ root, scope, state, finish, section }) {
   const ui = stageLayout(root,
-    L('師匠の<strong>「トン」</strong>に続けて<strong>「カン」</strong>と打て。どこを叩いてもよい', 'After the master’s <strong>“tonk”</strong>, strike <strong>“KAN!”</strong> — tap anywhere') +
+    L('師匠が叩いた<strong>リズムを、そのまま返せ</strong>。金の音符が線に重なった瞬間に叩く', 'Echo the <strong>master’s rhythm</strong> — strike as each gold note reaches the line') +
     L('<span class="keys">（<kbd>Space</kbd>）</span>', '<span class="keys"> (<kbd>Space</kbd>)</span>'));
   const [c, g] = makeCanvas(860, 420, 'stage-canvas', 1.5);
   c.style.touchAction = 'none';
@@ -96,8 +96,10 @@ function stageKatana({ root, scope, state, finish, section }) {
   const CX = 570, AY = H * 0.72 - 50;
   const KAWA_FOLDS = 5, KAWA_LEN = 150, KAWA_AREA = KAWA_LEN * 36;
   const NOB_X = 70, NOB_MAX = 700;
+  const BPM = 104, BEAT = 60 / BPM, BAR = BEAT * 4, EIGHTH = BEAT / 2;
+  const WIN = { perfect: 0.05, good: 0.1, ok: 0.17 };
 
-  let T = 1300;
+  let T = 1320;
   let purity = 0.44, carbon = 0.88 + Math.random() * 0.04;
   let folds = 0, time = 0, msg = '', msgT = 0, shake = 0, combo = 0, maxCombo = 0;
   const acc = { kawa: [], shin: [], tsukuri: [], nobashi: [] };
@@ -108,35 +110,72 @@ function stageKatana({ root, scope, state, finish, section }) {
   let bendK = 0, coreIn = 0, closeK = 0, coreOff = 0, tseam = 1;   // 造り込み
   let nobLen = 150, tipK = 0;                                     // 打ち延ばし
 
-  // 手順
-  const steps = [];
-  for (let f = 0; f < KAWA_FOLDS; f++) {
-    steps.push({ s: 'kawa', k: 'spread', p: 0.2 }, { s: 'kawa', k: 'spread', p: 0.45 }, { s: 'kawa', k: 'spread', p: 0.7 }, { s: 'kawa', k: 'spread', p: 0.9 },
-      { s: 'kawa', k: 'notch' }, { s: 'kawa', k: 'fold' }, { s: 'kawa', k: 'weld', p: 0.3 }, { s: 'kawa', k: 'weld', p: 0.7 });
+  /* ---------- 譜面：師匠が1小節叩いて見せ、次の1小節で同じリズムを返す ---------- */
+  const chart = [];            // { t, who: 'M'|'P', step, judged, scheduled }
+  const events = [];           // { t, kind: 'section'|'reheat'|'insert'|'yaki', id }
+  const respBars = new Set();
+  let bar = 0;
+  const POOLS = {              // 8分音符の位置（0〜7）
+    easy: [[0, 2, 4, 6]],
+    mid: [[0, 2, 4, 6], [0, 2, 3, 4, 6], [0, 1, 2, 4, 6], [0, 3, 4, 6], [0, 2, 4, 5, 6]],
+    hard: [[0, 2, 3, 5, 6], [0, 1, 2, 4, 5, 6], [0, 3, 4, 6, 7], [0, 2, 3, 4, 6, 7], [0, 1, 3, 4, 6]]
+  };
+  const FOLD_POOL = [[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 5, 6], [0, 3, 5, 6], [0, 2, 3, 6]];
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  function callResponse(slots, steps) {
+    slots.forEach((sl, i) => chart.push({ t: bar * BAR + sl * EIGHTH, who: 'M', step: steps[i] }));
+    bar++;
+    respBars.add(bar);
+    slots.forEach((sl, i) => chart.push({ t: bar * BAR + sl * EIGHTH, who: 'P', step: steps[i] }));
+    bar++;
   }
-  [0.2, 0.5, 0.8, 0.35, 0.65].forEach(p => steps.push({ s: 'shin', k: 'pack', p }));
-  steps.push({ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }, { s: 'tsukuri', k: 'insert', auto: true },
-    { s: 'tsukuri', k: 'close', p: -1 }, { s: 'tsukuri', k: 'close', p: 1 }, { s: 'tsukuri', k: 'weld', p: 0 }, { s: 'tsukuri', k: 'weld', p: 0 });
-  for (let i = 0; i < 8; i++) steps.push({ s: 'nobashi', k: 'draw', p: 0.1 + i * 0.11 });
-  steps.push({ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' });
-  const MUST = { notch: 1, fold: 1, bend: 1, close: 1, tip: 1 };   // 打ち逃したらやり直す手順
-  let si = 0, curSec = -1;
+  function rest(kind, extra = {}) { events.push({ t: bar * BAR, kind, ...extra }); bar++; }
+  const spread = (s, k, slots, from, to, extra = {}) =>
+    slots.map((_, i) => ({ s, k, p: from + (to - from) * i / Math.max(1, slots.length - 1), n: slots.length, ...extra }));
 
-  // 進行モード
-  let mode = 'banner';          // banner | beat | reheat | anim | yaki | done
-  let modeT = 0;
-  let beat = 0.7, nextBeat = 0, target = null, targetAt = 0, struck = false;
-  let masterFx = 0, hammerFx = null;
-  // 焼入れ
+  rest('section', { id: 'kawa' });
+  for (let f = 0; f < KAWA_FOLDS; f++) {
+    const sp = pick(POOLS[f < 1 ? 'easy' : f < 3 ? 'mid' : 'hard']);
+    callResponse(sp, spread('kawa', 'spread', sp, 0.12, 0.92));
+    const fp = f < 1 ? FOLD_POOL[0] : pick(FOLD_POOL);
+    callResponse(fp, [{ s: 'kawa', k: 'notch' }, { s: 'kawa', k: 'fold' }, { s: 'kawa', k: 'weld', p: 0.3 }, { s: 'kawa', k: 'weld', p: 0.7, last: true }]);
+    if (f === 1 || f === 3) rest('reheat');
+  }
+  rest('section', { id: 'shin' });
+  { const p = pick(POOLS.mid); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
+  rest('section', { id: 'tsukuri' });
+  callResponse([0, 4], [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
+  rest('insert');
+  callResponse(pick([[0, 2, 4, 6], [0, 3, 4, 6], [0, 2, 3, 6]]),
+    [{ s: 'tsukuri', k: 'close', p: -1 }, { s: 'tsukuri', k: 'close', p: 1 }, { s: 'tsukuri', k: 'weld', p: 0 }, { s: 'tsukuri', k: 'weld', p: 0 }]);
+  rest('section', { id: 'nobashi' });
+  {
+    const d1 = pick(POOLS.mid), d2 = pick(POOLS.hard), nd = d1.length + d2.length;
+    callResponse(d1, spread('nobashi', 'draw', d1, 0.06, 0.45, { n: nd }));
+    callResponse(d2, spread('nobashi', 'draw', d2, 0.5, 0.92, { n: nd }));
+  }
+  callResponse([0, 4], [{ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' }]);
+  rest('yaki');
+  const pNotes = chart.filter(n => n.who === 'P');
+
+  // 進行
+  let mode = 'play';           // play | yaki | done
+  let curSec = 0, bannerT = 0, reheatUntil = -1, insertAt = -1;
+  let t0 = 0, started = false;
+  let masterFx = 0, masterX = CX, masterY = AY, hammerFx = null;
+  let lastJudge = null;        // レーン上の判定表示 { text, t, q }
   let yk = null;
+  const songT = () => (started ? Sound.now() - t0 : -1);
 
   const say = (s, d = 1.0) => { msg = s; msgT = d; };
   const avg = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
   const secIndex = id => SECTIONS.findIndex(s => s.id === id);
 
-  const hitBtn = btn(L('カン！', 'KAN!'), 'primary big hit', () => strike());
-  ui.controls.append(hitBtn);
-  scope.on(c, 'pointerdown', e => { e.preventDefault(); strike(); });
+  // 画面のどこを叩いてもよい（上部のボタン類を押したときは除く）
+  scope.on(window, 'pointerdown', e => {
+    if (e.target.closest && e.target.closest('button, a, input, label')) return;
+    strike();
+  });
   scope.on(window, 'keydown', e => {
     if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
@@ -144,18 +183,28 @@ function stageKatana({ root, scope, state, finish, section }) {
     }
   });
 
+  function begin() {
+    Sound.init();
+    t0 = Sound.now() + 0.8;
+    started = true;
+    if (Sound.ctx) Music.groove(t0 + (Sound.ctx.outputLatency || 0), BEAT);
+  }
+  begin();
+  if (/[?&]debug\b/.test(location.search)) window.__katana = { pNotes, songT, BEAT };
+
   function enterSection(id) {
     curSec = secIndex(id);
     section && section(curSec);
-    mode = 'banner'; modeT = 1.3;
-    target = null;
-    if (id === 'yaki') Music.setMood('tense');
+    bannerT = id === 'yaki' ? 1.3 : BAR;
+    T = 1320;
   }
-  enterSection('kawa');
 
-  /* 現在の鋼の上面の高さ（狙いの輪を出す位置） */
-  function topY(x) {
-    const st = steps[si] || {};
+  /* いま叩くべき（次の）音符 */
+  function nextNote() { return pNotes.find(n => !n.judged); }
+  function curStep() { const n = nextNote(); return n ? n.step : { s: SECTIONS[curSec].id, k: '' }; }
+
+  /* 鋼の上面の高さ（狙いの輪を出す位置） */
+  function topY(st) {
     if (st.s === 'kawa') return AY - KAWA_AREA / len;
     if (st.s === 'shin') return AY - 4400 / shinLen;
     if (st.s === 'tsukuri') return st.k === 'weld' || st.k === 'close' ? AY - 24 - 80 : AY - 24;
@@ -166,7 +215,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     if (st.s === 'kawa') {
       if (st.k === 'notch') return CX;
       if (st.k === 'fold') return CX + len / 2 - 14;
-      return CX - len / 2 + len * st.p;
+      return CX - len / 2 + len * (st.p ?? 0.5);
     }
     if (st.s === 'shin') return CX - shinLen / 2 + shinLen * st.p;
     if (st.s === 'tsukuri') {
@@ -175,52 +224,67 @@ function stageKatana({ root, scope, state, finish, section }) {
       return CX + coreOff;
     }
     if (st.k === 'tip') return NOB_X + nobLen - 18;
-    return NOB_X + nobLen * st.p;
+    return NOB_X + nobLen * (st.p ?? 0.5);
   }
 
   function strike() {
-    if (mode !== 'beat' || foldAnim >= 0) return;
+    if (mode !== 'play' || !started) return;
     Sound.init();
-    const st = steps[si];
-    let q;
-    if (target && !struck) {
-      const d = Math.abs(time - targetAt);
-      q = d < 0.07 ? 1 : d < 0.15 ? 0.65 : 0.3;
-    } else q = 0.15;
-    const x = target ? target.x : targetX(st);
-    hammerFx = { x, y: topY(x), t: 0 };
-    shake = 3 + q * 7;
-    T -= 11;
-    Sound.clang(0.45 + q * 0.55, T < 1000);
-    if (navigator.vibrate) { try { navigator.vibrate(q >= 0.65 ? 18 : 8); } catch (e) { /* 無視 */ } }
-    if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
-    parts.spark(x, topY(x), Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
-    if (!target || struck) { say(L('拍子が早い', 'Too early'), 0.5); return; }
-    struck = true;
+    const now = songT();
+    let best = null, bd = 1e9;
+    for (const n of pNotes) {
+      if (n.judged) continue;
+      const d = Math.abs(now - n.t);
+      if (d < bd) { bd = d; best = n; }
+      if (n.t > now + 0.5) break;
+    }
+    if (best && bd <= WIN.ok) {
+      judge(best, bd <= WIN.perfect ? 1 : bd <= WIN.good ? 0.65 : 0.3);
+    } else {
+      // 空振り
+      const st = curStep();
+      const x = targetX(st);
+      hammerFx = { x, y: topY(st), t: 0 };
+      shake = 2;
+      Sound.clang(0.3, true);
+      combo = 0;
+      lastJudge = { text: L('空振り', 'Whiff'), t: time, q: 0 };
+    }
+  }
+
+  function judge(n, q) {
+    n.judged = true;
+    const st = n.step;
+    const x = targetX(st), y = topY(st);
     acc[st.s].push(q);
-    const hf = clamp((T - 850) / 450, 0.2, 1);
+    const hf = clamp((T - 850) / 450, 0.5, 1);
+    if (q > 0) {
+      hammerFx = { x, y, t: 0 };
+      shake = 3 + q * 7;
+      T -= 9;
+      Sound.clang(0.45 + q * 0.55, false);
+      if (navigator.vibrate) { try { navigator.vibrate(q >= 0.65 ? 18 : 8); } catch (e) { /* 無視 */ } }
+      parts.spark(x, y, Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
+    }
+    if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
+    lastJudge = { text: q === 1 ? L('会心', 'Perfect') : q >= 0.65 ? L('良し', 'Good') : q > 0 ? L('ずれ', 'Off') : L('見逃し', 'Miss'), t: time, q };
     apply(st, q, hf);
-    const label = q === 1 ? L('会心！', 'Perfect!') : q >= 0.65 ? L('良し', 'Good') : L('ずれた', 'Off beat');
-    if (!msgT || msgT < 0.6) say(combo >= 3 && q >= 0.65 ? `${label}　${combo}${L('連', ' combo')}` : label, 0.55);
-    advance();
   }
 
   function apply(st, q, hf) {
+    const qq = 0.35 + 0.65 * q;
     if (st.s === 'kawa') {
       if (st.k === 'spread') {
-        len += 34 * (0.35 + 0.65 * q) * hf;
-        purity += (1 - purity) * 0.07 * q * hf;
-        const nextIsNotch = steps[si + 1] && steps[si + 1].k === 'notch';
-        if (nextIsNotch && len < KAWA_LEN * 1.75) steps.splice(si + 1, 0, { s: 'kawa', k: 'spread', p: 0.3 + Math.random() * 0.5 });
+        len += (0.8 * KAWA_LEN / st.n) * qq * hf;
+        purity += (1 - purity) * (0.28 / st.n) * q * hf;
       } else if (st.k === 'notch') {
         notch = true; Sound.chisel(); scope.timeout(() => Sound.chisel(), 90);
       } else if (st.k === 'fold') {
         foldAnim = 0; Sound.thud();
       } else if (st.k === 'weld') {
-        seam = Math.max(0, seam - 0.55 * q * clamp((T - 1050) / 200, 0.25, 1));
+        seam = Math.max(0, seam - 0.55 * q);
         purity += (1 - purity) * 0.03 * q;
-        const last = !steps[si + 1] || steps[si + 1].k !== 'weld';
-        if (last) {
+        if (st.last) {
           if (seam > 0.3) { purity -= 0.02 * seam; say(L('鍛着が甘い…', 'Weak weld…'), 1); }
           else say(L(`${folds}回目、鍛着！`, `Fold ${folds} welded!`), 1);
           seam = 0;
@@ -228,23 +292,16 @@ function stageKatana({ root, scope, state, finish, section }) {
       }
       purity = clamp(purity, 0.3, 0.995);
     } else if (st.s === 'shin') {
-      shinLen = Math.min(KAWA_LEN, shinLen + 9 * (0.4 + 0.6 * q));
-      shinTight += 0.2 * q;
+      shinLen = Math.min(KAWA_LEN, shinLen + (40 / st.n) * qq);
+      shinTight += q / st.n;
     } else if (st.s === 'tsukuri') {
       if (st.k === 'bend') bendK = Math.min(1, bendK + 0.5);
       else if (st.k === 'close') closeK = Math.min(1, closeK + 0.5);
       else if (st.k === 'weld') tseam = Math.max(0, tseam - 0.5 * q - 0.1);
     } else if (st.s === 'nobashi') {
-      if (st.k === 'draw') nobLen = Math.min(NOB_MAX, nobLen + (NOB_MAX - 150) / 8);
+      if (st.k === 'draw') nobLen = Math.min(NOB_MAX, nobLen + (NOB_MAX - 150) / st.n);
       else tipK = Math.min(1, tipK + 0.5);
     }
-  }
-
-  function advance() {
-    si++;
-    const st = steps[si];
-    if (!st) { scope.timeout(startYaki, 500); mode = 'anim'; target = null; return; }
-    if (st.s !== SECTIONS[curSec].id) scope.timeout(() => enterSection(st.s), 350);
   }
 
   function startYaki() {
@@ -254,8 +311,12 @@ function stageKatana({ root, scope, state, finish, section }) {
     const quenchT = Math.round(790 + (1 - qq) * (Math.random() < 0.5 ? -1 : 1) * 90);
     const hamonName = accAll >= 0.85 ? '丁子' : accAll >= 0.7 ? '互の目' : accAll >= 0.55 ? '湾れ' : '直刃';
     const f = HAMON_PRESETS[hamonName];
-    yk = { t: 0, accAll, qq, crack, quenchT, hamonName, hamon: Array.from({ length: HAMON_N }, (_, i) => f(i / (HAMON_N - 1))), sori: 10 + 12 * qq, sizzled: false };
+    yk = { t: -1.3, accAll, qq, crack, quenchT, hamonName, hamon: Array.from({ length: HAMON_N }, (_, i) => f(i / (HAMON_N - 1))), sori: 10 + 12 * qq, sizzled: false };
+    Music.grooveOff();
+    Music.setMood('tense');
     enterSection('yaki');
+    T = 1100;
+    mode = 'yaki';
   }
 
   function end() {
@@ -363,10 +424,10 @@ function stageKatana({ root, scope, state, finish, section }) {
   }
 
   /* 合図の絵（文字の代わり） */
-  function drawIcon(kind, x, y, s) {
+  function drawIcon(kind, x, y, s, color = '#ffd77a') {
     g.save();
     g.translate(x, y); g.scale(s, s);
-    g.strokeStyle = '#ffd77a'; g.fillStyle = '#ffd77a'; g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.strokeStyle = color; g.fillStyle = color; g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round';
     const arrowHead = (x1, y1, ang) => {
       g.beginPath();
       g.moveTo(x1, y1);
@@ -414,6 +475,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     g.fillStyle = wg; g.fillRect(70, 312, 720, 96);
     // 刀身：土を置き（〜0.9）→ 赤める（〜2.4）→ 入水
     const clay = clamp(t / 0.6, 0, 1);
+    if (t < 0) { Sword.draw(g, { x: 130, y: 200, length: 640, width: 52, sori: 0, nakago: true, habaki: false, polish: 0.2, folds: 8, seed: 7, heat: T, shadow: false, bg: '#050302' }); return; }
     let heat, y = 200, sori = 0;
     if (t < 0.9) heat = lerp(T, 520, clamp(t / 0.5, 0, 1));
     else if (t < 2.4) heat = lerp(520, yk.quenchT, smooth((t - 0.9) / 1.5));
@@ -430,7 +492,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       if (k > 0.25 && k < 2 && Math.random() < dt * 40) parts.steam(430, 310, 3, 330);
     }
     Sword.draw(g, { x: 130, y, length: 640, width: 52, sori, nakago: true, habaki: false, polish: 0.2, folds: 8, seed: 7, hamon: yk.hamon, heat, clay, shadow: false, bg: '#050302' });
-    if (t < 0.9) label(L('土置き', 'Applying clay'), 430, 120);
+    if (t < 0) { /* 題目の表示中 */ } else if (t < 0.9) label(L('土置き', 'Applying clay'), 430, 120);
     else if (t < 2.4) label(L('月の出の色まで赤める…', 'Heating to the “rising-moon” glow…'), 430, 120);
     else if (t < 3.6) {
       const k = t - 2.4;
@@ -451,33 +513,35 @@ function stageKatana({ root, scope, state, finish, section }) {
   }
 
   function drawScene(dt) {
-    const st = steps[Math.min(si, steps.length - 1)];
     const sec = SECTIONS[curSec].id;
     if (sec === 'nobashi' || sec === 'yaki') drawSmithy(g, W, H, heatGlow(T), -600);
     else drawSmithy(g, W, H, heatGlow(T), CX - 105);
-    if (mode === 'reheat') drawReheat();
+    if (songT() < reheatUntil) drawReheat();
     if (sec === 'kawa') drawKawa();
     else if (sec === 'shin') drawShin();
     else if (sec === 'tsukuri') drawTsukuri();
     else if (sec === 'nobashi') drawNobashi();
     else if (sec === 'yaki') { drawYaki(dt); return; }
 
-    // 師匠の合図
-    if (mode === 'beat' && target && !struck) {
-      const k = clamp((targetAt - time) / (beat / 2), 0, 1);
-      const ty = topY(target.x);
-      const u = 1.5 / cam.z;
-      g.strokeStyle = `rgba(255,214,120,${0.35 + 0.65 * (1 - k)})`;
-      g.lineWidth = 3 * u;
-      g.beginPath(); g.arc(target.x, ty, (16 + k * 60) * u, 0, TAU); g.stroke();
-      g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5 * u;
-      g.beginPath(); g.arc(target.x, ty, 16 * u, 0, TAU); g.stroke();
-      if (['notch', 'fold', 'bend', 'close', 'tip'].includes(st.k)) drawIcon(st.k, target.x, ty - (42 + k * 20) * u, u * 1.1);
+    // 次に叩く場所：輪が閉じたら叩く
+    const n = nextNote();
+    if (mode === 'play' && n && n.step.s === sec) {
+      const k = (n.t - songT()) / BEAT;
+      if (k < 1.2 && k > -0.2) {
+        const kk = clamp(k, 0, 1);
+        const st = n.step, x = targetX(st), ty = topY(st);
+        const u = 1.5 / cam.z;
+        g.strokeStyle = `rgba(255,214,120,${0.35 + 0.65 * (1 - kk)})`;
+        g.lineWidth = 3 * u;
+        g.beginPath(); g.arc(x, ty, (16 + kk * 60) * u, 0, TAU); g.stroke();
+        g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5 * u;
+        g.beginPath(); g.arc(x, ty, 16 * u, 0, TAU); g.stroke();
+        if (['notch', 'fold', 'bend', 'close', 'tip'].includes(st.k)) drawIcon(st.k, x, ty - (42 + kk * 20) * u, u * 1.1);
+      }
     }
-    if (masterFx > 0 && target) {
-      const ty = topY(target.x);
+    if (masterFx > 0) {
       g.save();
-      g.translate(target.x + 26, ty - 18 - masterFx * 26);
+      g.translate(masterX + 26, masterY - 18 - masterFx * 26);
       g.rotate(-0.6);
       g.fillStyle = '#4a3220'; g.fillRect(8, -3, 70, 6);
       g.fillStyle = '#5c5e64'; g.fillRect(-10, -9, 20, 18);
@@ -505,8 +569,8 @@ function stageKatana({ root, scope, state, finish, section }) {
     if (sec === 'yaki') return { x: W / 2, y: H * 0.6, z: 1 };
     if (sec === 'tsukuri') return { x: CX, y: AY - 70, z: 1.75 };
     if (sec === 'nobashi') {
-      const st = steps[si];
-      const fx = st && st.s === 'nobashi' ? targetX(st) : NOB_X + nobLen / 2;
+      const st = curStep();
+      const fx = st.s === 'nobashi' ? targetX(st) : NOB_X + nobLen / 2;
       return { x: fx, y: AY - 32, z: 1.9 };
     }
     return { x: CX, y: AY - 45, z: 2.1 };
@@ -516,23 +580,89 @@ function stageKatana({ root, scope, state, finish, section }) {
     const k = 1 - Math.pow(0.03, dt);
     cam.z = lerp(cam.z, t.z, k);
     cam.x = lerp(cam.x, clamp(t.x, W / (2 * cam.z), W - W / (2 * cam.z)), k);
-    cam.y = lerp(cam.y, clamp(t.y, H * 0.6 / cam.z, H - H * 0.4 / cam.z), k);
+    // 上の譜面レーンに隠れないよう、鉄は少し下寄りに置く
+    cam.y = lerp(cam.y, clamp(t.y - 18 / cam.z, H * 0.6 / cam.z, H - H * 0.4 / cam.z), k);
+  }
+
+  /* 譜面レーン（画面上部）：師匠の音符は小さな点、あなたの音符は金の丸 */
+  function drawLane() {
+    const uk = uiK(c, 1.8);
+    const LH = 54 * uk, y0 = 6, cy = y0 + LH / 2;
+    const JX = 64 * uk;
+    const SPEED = 250 * uk;
+    const now = songT();
+    const xOf = t => JX + (t - now) * SPEED;
+    g.save();
+    g.fillStyle = 'rgba(8,5,3,0.72)';
+    g.fillRect(0, y0, W, LH);
+    // 小節：返す小節をうっすら金色に
+    const b0 = Math.floor((now - JX / SPEED) / BAR), b1 = Math.ceil((now + W / SPEED) / BAR);
+    for (let b = b0; b <= b1; b++) {
+      const x = xOf(b * BAR), x2 = xOf((b + 1) * BAR);
+      if (respBars.has(b)) { g.fillStyle = 'rgba(210,174,99,0.10)'; g.fillRect(x, y0, x2 - x, LH); }
+      g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, y0); g.lineTo(x, y0 + LH); g.stroke();
+      for (let q = 1; q < 4; q++) {
+        const xb = xOf(b * BAR + q * BEAT);
+        g.strokeStyle = 'rgba(255,255,255,0.05)';
+        g.beginPath(); g.moveTo(xb, y0 + LH * 0.3); g.lineTo(xb, y0 + LH * 0.7); g.stroke();
+      }
+    }
+    // 判定の位置
+    g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 2.5;
+    g.beginPath(); g.arc(JX, cy, 17 * uk, 0, TAU); g.stroke();
+    // 音符
+    for (const n of chart) {
+      const x = xOf(n.t);
+      if (x < -30 || x > W + 30) continue;
+      if (n.who === 'M') {
+        const past = n.t < now;
+        g.fillStyle = past ? 'rgba(150,135,110,0.35)' : 'rgba(190,170,135,0.9)';
+        g.beginPath(); g.arc(x, cy, 6 * uk, 0, TAU); g.fill();
+      } else if (!n.judged) {
+        const r = 14 * uk;
+        const gr = g.createRadialGradient(x - r * 0.3, cy - r * 0.3, 1, x, cy, r);
+        gr.addColorStop(0, '#fff2c8'); gr.addColorStop(0.5, '#f0c060'); gr.addColorStop(1, '#a8701c');
+        g.fillStyle = gr;
+        g.beginPath(); g.arc(x, cy, r, 0, TAU); g.fill();
+        g.strokeStyle = 'rgba(60,30,5,0.8)'; g.lineWidth = 1.2; g.stroke();
+        if (['notch', 'fold', 'bend', 'close', 'tip'].includes(n.step.k)) drawIcon(n.step.k, x, cy + 2 * uk, uk * 0.5, '#3a2006');
+      } else if (n.missed && n.t > now - 1) {
+        g.fillStyle = 'rgba(120,110,100,0.4)';
+        g.beginPath(); g.arc(x, cy, 10 * uk, 0, TAU); g.fill();
+      }
+    }
+    // 判定の文字
+    if (lastJudge && time - lastJudge.t < 0.5) {
+      const k = (time - lastJudge.t) / 0.5;
+      g.font = `bold ${Math.round(15 * uk)}px "Shippori Mincho", serif`;
+      g.textAlign = 'center';
+      g.fillStyle = lastJudge.q >= 1 ? `rgba(255,224,140,${1 - k})` : lastJudge.q >= 0.65 ? `rgba(240,230,210,${1 - k})` : `rgba(200,150,130,${1 - k})`;
+      g.fillText(lastJudge.text, JX, y0 + LH + 18 * uk - k * 6 * uk);
+      if (lastJudge.q >= 0.65) {
+        g.strokeStyle = `rgba(255,214,120,${1 - k})`; g.lineWidth = 3;
+        g.beginPath(); g.arc(JX, cy, 17 * uk + k * 14 * uk, 0, TAU); g.stroke();
+      }
+    }
+    g.restore();
+    return y0 + LH;
   }
 
   function drawBanner() {
     const s = SECTIONS[curSec];
-    const k = clamp(modeT / 1.3, 0, 1);
+    const dur = s.id === 'yaki' ? 1.3 : BAR;
+    const k = clamp(bannerT / dur, 0, 1);
     const a = k > 0.8 ? (1 - k) / 0.2 : k < 0.2 ? k / 0.2 : 1;
     g.save();
     g.fillStyle = `rgba(0,0,0,${0.55 * a})`;
-    g.fillRect(0, H / 2 - 70, W, 140);
+    g.fillRect(0, H / 2 - 50, W, 120);
     g.textAlign = 'center';
     g.fillStyle = `rgba(210,174,99,${a})`;
     g.font = `${fs(c, 18, 1.6)}px "Shippori Mincho", serif`;
-    g.fillText(L(`其の${s.no}`, `PART ${curSec + 1}`), W / 2, H / 2 - 28);
+    g.fillText(L(`其の${s.no}`, `PART ${curSec + 1}`), W / 2, H / 2 - 12);
     g.fillStyle = `rgba(255,240,220,${a})`;
-    g.font = `bold ${fs(c, 44, 1.5)}px "Shippori Mincho", serif`;
-    g.fillText(s.title, W / 2, H / 2 + 26);
+    g.font = `bold ${fs(c, 40, 1.5)}px "Shippori Mincho", serif`;
+    g.fillText(s.title, W / 2, H / 2 + 38);
     g.restore();
   }
 
@@ -540,64 +670,54 @@ function stageKatana({ root, scope, state, finish, section }) {
   scope.loop(dt => {
     time += dt;
     msgT -= dt;
+    bannerT -= dt;
     shake = Math.max(0, shake - dt * 30);
     masterFx = Math.max(0, masterFx - dt * 6);
     if (hammerFx) hammerFx.t += dt;
     parts.update(dt);
+    const now = songT();
 
-    if (mode === 'banner') {
-      modeT -= dt;
-      if (modeT <= 0) {
-        if (SECTIONS[curSec].id === 'yaki') mode = 'yaki';
-        else { mode = 'beat'; nextBeat = time + 0.3; }
+    if (mode === 'play') {
+      // 区切り・沸かし直し・心鉄入れ
+      for (const ev of events) {
+        if (ev.done || now < ev.t) continue;
+        ev.done = true;
+        if (ev.kind === 'section') enterSection(ev.id);
+        else if (ev.kind === 'reheat') { reheatUntil = ev.t + BAR; Sound.whoosh(); scope.timeout(() => Sound.whoosh(), BEAT * 1000); }
+        else if (ev.kind === 'insert') { insertAt = ev.t; coreOff = (Math.random() < 0.5 ? -1 : 1) * (1 - avg(acc.tsukuri)) * 16; }
+        else if (ev.kind === 'yaki') startYaki();
       }
-    } else if (mode === 'reheat') {
-      modeT -= dt;
-      T = Math.min(1320, T + 380 * dt);
-      Sound.fire(0.8);
-      if (Math.random() < dt * 3) Sound.whoosh();
-      if (modeT <= 0) { mode = 'beat'; nextBeat = time + 0.35; Sound.fire(0.15); }
-    } else if (mode === 'anim') {
-      // 心鉄を入れる（自動）
-      const st = steps[si];
-      if (st && st.k === 'insert') {
-        if (coreIn === 0) coreOff = (Math.random() < 0.5 ? -1 : 1) * (1 - avg(acc.tsukuri)) * 16;
-        coreIn = Math.min(1, coreIn + dt / 0.6);
-        if (coreIn >= 1) { Sound.thud(); mode = 'beat'; nextBeat = time + 0.3; si++; }
+      if (now < reheatUntil) { T = Math.min(1320, T + 420 * dt); Sound.fire(0.7); } else Sound.fire(0.12);
+      if (insertAt >= 0 && coreIn < 1) {
+        coreIn = clamp((now - insertAt) / (BEAT * 1.5), 0, 1);
+        if (coreIn >= 1) Sound.thud();
       }
-    } else if (mode === 'beat') {
-      Sound.fire(0.15);
-      T -= 8 * dt;
+      // 師匠の小槌：少し先の音符を正確な時刻で鳴らし、絵は時刻が来たら動かす
+      for (const n of chart) {
+        if (n.who !== 'M') continue;
+        if (!n.scheduled && n.t - now < 0.25) {
+          n.scheduled = true;
+          if (n.t > now - 0.05) Sound.tickAt(t0 + n.t + (Sound.ctx ? Sound.ctx.outputLatency || 0 : 0));
+        }
+        if (!n.shown && now >= n.t) {
+          n.shown = true;
+          masterFx = 1; masterX = targetX(n.step); masterY = topY(n.step);
+        }
+        if (n.t > now + 0.3) break;
+      }
+      // 見逃し
+      for (const n of pNotes) {
+        if (n.judged) continue;
+        if (now > n.t + WIN.ok) { n.missed = true; judge(n, 0); }
+        else break;
+      }
+      // 折り返し
       if (foldAnim >= 0) {
-        foldAnim += dt / 0.45;
+        foldAnim += dt / 0.25;
         if (foldAnim >= 1) {
           foldAnim = -1; len /= 2; notch = false; seam = 1;
           folds++; carbon -= 0.04;
           say(L(`${folds}回目の折り返し`, `Fold ${folds}`), 0.9);
-        }
-      } else if (time >= nextBeat) {
-        // 前の合図を打ち逃した
-        if (target && !struck) {
-          combo = 0;
-          const st = steps[si];
-          if (!MUST[st.k]) { acc[st.s].push(0); advance(); }
-          say(L('打ち逃した', 'Missed'), 0.5);
-        }
-        target = null;
-        const st = steps[si];
-        nextBeat = time + beat;
-        if (mode !== 'beat' || !st) { /* 区切りの切り替え中 */ }
-        else if (st.auto) { mode = 'anim'; }
-        else if (T < 920) {
-          mode = 'reheat'; modeT = 1.4;
-          say(L('冷えた', 'Cooled'), 0.8);
-        } else if (st.s === SECTIONS[curSec].id) {
-          beat = 60 / (86 + curSec * 8 + folds * 2);
-          target = { k: st.k, x: targetX(st) };
-          targetAt = time + beat / 2;
-          struck = false;
-          masterFx = 1;
-          Sound.tick();
         }
       }
     } else if (mode === 'yaki') {
@@ -610,24 +730,26 @@ function stageKatana({ root, scope, state, finish, section }) {
     g.save();
     if (shake > 0) g.translate(rand(-shake, shake) * 0.5, rand(-shake, shake) * 0.5);
     g.translate(W / 2, H * 0.6); g.scale(cam.z, cam.z); g.translate(-cam.x, -cam.y);
-    drawScene(dt);
+    if (mode === 'yaki' && yk.t < 0) drawScene(0); else drawScene(dt);
     parts.draw(g);
     g.restore();
-    g.save();
     // 画面に固定する表示
-    if (combo >= 2 && mode !== 'yaki') {
-      g.font = `bold ${fs(c, 24, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
-      g.fillText(`${combo} ${L('連', 'combo')}`, 24, 30 + fs(c, 24, 1.8));
+    g.save();
+    let laneBottom = 0;
+    if (mode === 'play') laneBottom = drawLane();
+    if (combo >= 2 && mode === 'play') {
+      g.font = `bold ${fs(c, 22, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
+      g.fillText(`${combo} ${L('連', 'combo')}`, 18, H - 16);
     }
-    if (mode === 'reheat') {
-      g.font = `bold ${fs(c, 22, 1.7)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe2b0';
-      g.fillText(L('沸かし直し…', 'Reheating…'), W / 2, 60);
+    if (now < reheatUntil && mode === 'play') {
+      g.font = `bold ${fs(c, 20, 1.7)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe2b0';
+      g.fillText(L('沸かし直し', 'Reheating'), W / 2, laneBottom + fs(c, 26, 1.7));
     }
-    if (mode === 'banner') drawBanner();
-    if (msgT > 0 && mode !== 'yaki') {
-      g.font = `bold ${fs(c, 26, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';
+    if (bannerT > 0) drawBanner();
+    if (msgT > 0 && mode === 'play') {
+      g.font = `bold ${fs(c, 22, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';
       g.fillStyle = `rgba(255,236,200,${clamp(msgT * 2, 0, 1)})`;
-      g.fillText(msg, W / 2, 110);
+      g.fillText(msg, W / 2, laneBottom + fs(c, 52, 1.6));
     }
     g.restore();
 
@@ -635,14 +757,13 @@ function stageKatana({ root, scope, state, finish, section }) {
     ui.status.innerHTML =
       `<div class="stat"><span>${sec.no}</span><b>${sec.title}</b></div>` +
       (sec.id === 'kawa' ? `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}/${KAWA_FOLDS}</b></div>` : '') +
-      `<div class="meter heat"><span>${L('鋼の熱', 'Heat')}</span><i><b style="width:${clamp((T - 860) / 460, 0, 1) * 100}%;background:${rgbStr(heatRGB(T))}"></b></i></div>` +
       `<div class="stat"><span>${L('連打', 'Combo')}</span><b>${combo}</b></div>`;
-    hitBtn.disabled = mode !== 'beat';
   });
 }
 
+
 const STAGES = [
   { id: 'katana', no: '一', title: L('作刀', 'Forge a Katana'), yomi: L('さくとう', 'Sakutō'), run: stageKatana,
-    intro: L('師匠の小槌が<strong>「トン」</strong>と鳴ったら、続けて大鎚で<strong>「カン」</strong>と打つ。<br>叩くだけで、鍛錬・造り込み・打ち延ばしを経て、最後は焼入れで「ジュワッ」。',
-      'When the master’s small hammer goes <strong>“tonk”</strong>, answer with your big hammer — <strong>“KAN!”</strong><br>Just keep striking: forge, laminate and draw out the blade, then quench it with a hiss.') }
+    intro: L('師匠（横座）が小槌で<strong>リズムを叩いて見せる</strong>。次の小節で、<strong>同じリズムを大鎚で返せ</strong>。<br>上の譜面で、金の音符が左の輪に重なった瞬間に叩く。鍛錬・造り込み・打ち延ばしを経て、最後は焼入れで「ジュワッ」。',
+      'The master taps a <strong>rhythm</strong> with his small hammer. In the next bar, <strong>echo it with your big hammer</strong>.<br>Strike as each gold note reaches the circle on the left. Forge, laminate, draw out — then quench with a hiss.') }
 ];
