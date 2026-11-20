@@ -176,6 +176,17 @@ kbd { font-family: inherit; font-size: .85em; border: 1px solid var(--line); bor
 .detail dd { margin: 0; }
 .verdict { max-width: 720px; margin: 10px auto; text-align: left; background: rgba(24, 18, 14, .8); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
 
+/* シェア */
+.share { margin: 18px auto 6px; max-width: 720px; }
+.share-label { margin: 0 0 8px; color: var(--gold); letter-spacing: .2em; font-size: 15px; }
+.share-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+a.btn { text-decoration: none; display: inline-block; }
+.share-x { background: #000; border-color: #444; }
+.share-line { background: #06c755; border-color: #06c755; color: #fff; }
+.share-line:hover { background: #05b04b; }
+.toast { position: fixed; left: 50%; bottom: 32px; transform: translate(-50%, 20px); background: rgba(30, 22, 16, .95); border: 1px solid var(--gold); color: var(--ink); padding: 10px 20px; border-radius: 8px; opacity: 0; transition: .3s; z-index: 20; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
 /* 遊び方・蔵 */
 .page h2 { font-size: 32px; letter-spacing: .2em; margin: 8px 0 12px; }
 .howto-lead { font-size: 18px; margin: 0 0 14px; }

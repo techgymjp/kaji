@@ -272,6 +272,7 @@ function showAppraisal() {
   wrap.append(el('p', 'verdict', `<strong>鑑定士いわく：</strong>${r.rank[3]}${appraiserWords(state, r)}`));
   if (!saved) wrap.append(el('p', 'note', '※ ブラウザの設定により、蔵への保存ができませんでした。'));
   else wrap.append(el('p', 'note', 'この刀は蔵に納められた。'));
+  wrap.append(Share.buttons(rec, swordOpt));
   const menu = el('div', 'menu');
   menu.append(btn('もう一振り打つ', 'primary', () => newGame()), btn('蔵を見る', '', () => showKura()), btn('タイトルへ', '', () => showTitle()));
   wrap.append(menu);
