@@ -88,7 +88,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   const ui = stageLayout(root,
     L('師匠の<strong>「トン」</strong>に続けて<strong>「カン」</strong>と打て。どこを叩いてもよい', 'After the master’s <strong>“tonk”</strong>, strike <strong>“KAN!”</strong> — tap anywhere') +
     L('<span class="keys">（<kbd>Space</kbd>）</span>', '<span class="keys"> (<kbd>Space</kbd>)</span>'));
-  const [c, g] = makeCanvas(860, 420);
+  const [c, g] = makeCanvas(860, 420, 'stage-canvas', 1.5);
   c.style.touchAction = 'none';
   ui.view.append(c);
   const W = c.W, H = c.H;
@@ -310,14 +310,11 @@ function stageKatana({ root, scope, state, finish, section }) {
   function drawShin() {
     const h = 4400 / shinLen;
     Sword.drawHotBar(g, CX - shinLen / 2, AY - h, shinLen, h, T - 40, { seed: 77, time, scale: Math.round(90 * (1 - Math.min(1, shinTight))) });
-    // 鍛え終えた皮鉄が脇に控える
-    Sword.drawHotBar(g, 60, AY + 34, 150, 22, Math.max(650, T - 380), { seed: 18, time, scale: 30, layers: 6 });
-    label(L('心鉄', 'Core'), CX, AY - h - 40);
-    label(L('皮鉄', 'Skin'), 135, AY + 26);
+    label(L('心鉄', 'Core'), CX, AY - h - 26);
   }
 
   function label(text, x, y) {
-    g.font = `bold ${fs(c, 16, 1.8)}px "Shippori Mincho", serif`;
+    g.font = `bold ${Math.round(fs(c, 16, 1.8) / cam.z)}px "Shippori Mincho", serif`;
     g.textAlign = 'center'; g.fillStyle = 'rgba(255,230,200,0.85)';
     g.fillText(text, x, y);
   }
@@ -360,9 +357,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       }
       label(L('心鉄', 'Core'), CX + coreOff, cy + 44);
     }
-    label(L('皮鉄', 'Skin'), CX - 140 + bendK * 40, AY + 30);
-    g.fillStyle = '#c9b89a'; g.font = `${fs(c, 15)}px serif`; g.textAlign = 'left';
-    g.fillText(L('断面', 'Cross-section'), 24, 30);
+    label(L('皮鉄', 'Skin'), CX - 110 + bendK * 30, AY + 24);
   }
 
   function drawNobashi() {
@@ -420,7 +415,7 @@ function stageKatana({ root, scope, state, finish, section }) {
   function drawReheat() {
     // 鋼の下に火床の炎
     Sword.drawCoals(g, 120, AY + 6, 620, 40, 0.9, time, 41);
-    label(L('沸かし直し…', 'Reheating…'), W / 2, 70);
+
   }
 
   function drawScene(dt) {
@@ -439,15 +434,16 @@ function stageKatana({ root, scope, state, finish, section }) {
     if (mode === 'beat' && target && !struck) {
       const k = clamp((targetAt - time) / (beat / 2), 0, 1);
       const ty = topY(target.x);
+      const u = 1.5 / cam.z;
       g.strokeStyle = `rgba(255,214,120,${0.35 + 0.65 * (1 - k)})`;
-      g.lineWidth = 3;
-      g.beginPath(); g.arc(target.x, ty, 16 + k * 60, 0, TAU); g.stroke();
-      g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5;
-      g.beginPath(); g.arc(target.x, ty, 16, 0, TAU); g.stroke();
+      g.lineWidth = 3 * u;
+      g.beginPath(); g.arc(target.x, ty, (16 + k * 60) * u, 0, TAU); g.stroke();
+      g.strokeStyle = 'rgba(255,214,120,0.9)'; g.lineWidth = 1.5 * u;
+      g.beginPath(); g.arc(target.x, ty, 16 * u, 0, TAU); g.stroke();
       const lab = { notch: L('鏨', 'cut'), fold: L('折', 'fold'), bend: L('曲', 'bend'), close: L('締', 'press'), tip: L('切先', 'tip') }[st.k];
       if (lab) {
-        g.font = `bold ${fs(c, 20, 1.7)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffd77a';
-        g.fillText(lab, target.x, ty - 34 - k * 20);
+        g.font = `bold ${Math.round(fs(c, 22, 1.8) / cam.z)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffd77a';
+        g.fillText(lab, target.x, ty - (34 + k * 20) * u);
       }
     }
     if (masterFx > 0 && target) {
@@ -472,10 +468,27 @@ function stageKatana({ root, scope, state, finish, section }) {
       g.beginPath(); g.arc(hammerFx.x, hammerFx.y, 26 + k * 30, 0, TAU); g.fill();
       g.restore();
     }
-    if (combo >= 2) {
-      g.font = `bold ${fs(c, 24, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
-      g.fillText(`${combo} ${L('連', 'combo')}`, 24, 30 + fs(c, 24, 1.8));
+  }
+
+  /* カメラ：作業中の鉄に寄る */
+  const cam = { x: CX, y: AY - 45, z: 2.1 };
+  function camTarget() {
+    const sec = SECTIONS[curSec].id;
+    if (sec === 'yaki') return { x: W / 2, y: H * 0.6, z: 1 };
+    if (sec === 'tsukuri') return { x: CX, y: AY - 70, z: 1.75 };
+    if (sec === 'nobashi') {
+      const st = steps[si];
+      const fx = st && st.s === 'nobashi' ? targetX(st) : NOB_X + nobLen / 2;
+      return { x: fx, y: AY - 32, z: 1.9 };
     }
+    return { x: CX, y: AY - 45, z: 2.1 };
+  }
+  function updateCam(dt) {
+    const t = camTarget();
+    const k = 1 - Math.pow(0.03, dt);
+    cam.z = lerp(cam.z, t.z, k);
+    cam.x = lerp(cam.x, clamp(t.x, W / (2 * cam.z), W - W / (2 * cam.z)), k);
+    cam.y = lerp(cam.y, clamp(t.y, H * 0.6 / cam.z, H - H * 0.4 / cam.z), k);
   }
 
   function drawBanner() {
@@ -564,10 +577,24 @@ function stageKatana({ root, scope, state, finish, section }) {
       if (yk.t > 4.6) end();
     }
 
+    updateCam(dt);
+    g.fillStyle = '#0c0807'; g.fillRect(0, 0, W, H);
     g.save();
-    if (shake > 0) g.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
+    if (shake > 0) g.translate(rand(-shake, shake) * 0.5, rand(-shake, shake) * 0.5);
+    g.translate(W / 2, H * 0.6); g.scale(cam.z, cam.z); g.translate(-cam.x, -cam.y);
     drawScene(dt);
     parts.draw(g);
+    g.restore();
+    g.save();
+    // 画面に固定する表示
+    if (combo >= 2 && mode !== 'yaki') {
+      g.font = `bold ${fs(c, 24, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
+      g.fillText(`${combo} ${L('連', 'combo')}`, 24, 30 + fs(c, 24, 1.8));
+    }
+    if (mode === 'reheat') {
+      g.font = `bold ${fs(c, 22, 1.7)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe2b0';
+      g.fillText(L('沸かし直し…', 'Reheating…'), W / 2, 60);
+    }
     if (mode === 'banner') drawBanner();
     if (msgT > 0 && mode !== 'yaki') {
       g.font = `bold ${fs(c, 26, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center';

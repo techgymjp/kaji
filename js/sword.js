@@ -503,7 +503,6 @@ const Sword = (() => {
     const scaleA = clamp(1.0 - gl * 1.15, 0.05, 0.75);
     const nScale = opt.scale ?? 60;
     ctx.save();
-    ctx.filter = 'blur(1.5px)';
     for (let i = 0; i < nScale * 0.25; i++) {          // 大きく薄い斑
       const px = x + r() * w, py = y + r() * h;
       ctx.fillStyle = `rgba(30,12,6,${scaleA * 0.35 * r()})`;
@@ -513,8 +512,7 @@ const Sword = (() => {
     }
     ctx.restore();
     ctx.save();
-    ctx.filter = 'blur(0.6px)';
-    for (let i = 0; i < nScale * 3; i++) {             // 細かな鱗片
+    for (let i = 0; i < nScale * 2; i++) {             // 細かな鱗片
       const px = x + r() * w, py = y + r() * h;
       const s = 0.5 + r() * 1.8;
       ctx.fillStyle = r() < 0.8 ? `rgba(25,10,5,${scaleA * (0.25 + r() * 0.5)})` : rgbStr(heatRGB(T + 80), 0.5 * gl);
@@ -584,7 +582,6 @@ const Sword = (() => {
     // 炎
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = 'blur(5px)';
     for (let i = 0; i < 9; i++) {
       const fx = x + w * (0.1 + 0.8 * r());
       const fh = h * (0.6 + intensity * 1.6) * (0.5 + 0.5 * Math.sin(time * (6 + r() * 6) + i));

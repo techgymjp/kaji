@@ -39,9 +39,9 @@ function btn(label, cls, onClick) {
 }
 
 /* 高DPI対応キャンバス。論理座標 w×h で描画できる */
-function makeCanvas(w, h, cls) {
+function makeCanvas(w, h, cls, maxDpr = 2) {
   const c = document.createElement('canvas');
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dpr = Math.min(maxDpr, window.devicePixelRatio || 1);
   c.width = Math.round(w * dpr);
   c.height = Math.round(h * dpr);
   c.style.aspectRatio = `${w} / ${h}`;
