@@ -89,14 +89,14 @@ function stageForge({ root, scope, state, finish }) {
   const say = (s, d = 1.2) => { msg = s; msgT = d; };
 
   // ---------- 操作
-  const coatBtn = btn('藁灰と泥水をかける', 'primary', () => coat(true));
-  const skipBtn = btn('そのまま沸かす', '', () => coat(false));
-  const blowBtn = btn('ふいごを吹く（長押し）', 'primary hold');
-  const takeBtn = btn('取り出す', '', () => takeOut());
-  const tateBtn = btn('縦に折り返す', 'primary', () => cut('縦'));
-  const yokoBtn = btn('横に折り返す', 'primary', () => cut('横'));
-  const moreBtn = btn('さらに折り返す', 'primary', () => { phase = 'coat'; renderControls(); });
-  const endBtn = btn('鍛錬を終える', '', () => end());
+  const coatBtn = btn(L('藁灰と泥水をかける', 'Coat with Ash & Clay'), 'primary', () => coat(true));
+  const skipBtn = btn(L('そのまま沸かす', 'Heat Uncoated'), '', () => coat(false));
+  const blowBtn = btn(L('ふいごを吹く（長押し）', 'Pump Bellows (hold)'), 'primary hold');
+  const takeBtn = btn(L('取り出す', 'Take Out'), '', () => takeOut());
+  const tateBtn = btn(L('縦に折り返す', 'Fold Lengthwise'), 'primary', () => cut('縦'));
+  const yokoBtn = btn(L('横に折り返す', 'Fold Crosswise'), 'primary', () => cut('横'));
+  const moreBtn = btn(L('さらに折り返す', 'Fold Again'), 'primary', () => { phase = 'coat'; renderControls(); });
+  const endBtn = btn(L('鍛錬を終える', 'Finish Forging'), '', () => end());
   const startBlow = e => { e && e.preventDefault(); if (phase === 'heat') { blowing = true; Sound.init(); } };
   const stopBlow = () => { blowing = false; };
   scope.on(blowBtn, 'pointerdown', startBlow);
@@ -121,11 +121,11 @@ function stageForge({ root, scope, state, finish }) {
   scope.on(window, 'keyup', e => { if (e.code === 'Space') stopBlow(); });
 
   const HINTS = {
-    coat: '<strong>藁灰と泥水</strong>で酸化を防ぐ<span class="keys">（<kbd>Enter</kbd>）</span>',
-    heat: '長押しで加熱。<strong>沸き花</strong>が弾けたら取り出す<span class="keys">（<kbd>Space</kbd>長押し／<kbd>Enter</kbd>）</span>',
-    strike: '<strong>輪が閉じた瞬間</strong>に、その場所を打て',
-    cut: '鏨が<strong>中央</strong>に来たら、縦か横に折る<span class="keys">（<kbd>←</kbd>縦／<kbd>→</kbd>横）</span>',
-    choice: `続けるか、終えるか（炭素 <strong>0.6〜0.75%</strong> が目安）`
+    coat: L('<strong>藁灰と泥水</strong>で酸化を防ぐ<span class="keys">（<kbd>Enter</kbd>）</span>', 'Coat with <strong>straw ash & clay</strong> to prevent oxidation<span class="keys"> (<kbd>Enter</kbd>)</span>'),
+    heat: L('長押しで加熱。<strong>沸き花</strong>が弾けたら取り出す<span class="keys">（<kbd>Space</kbd>長押し／<kbd>Enter</kbd>）</span>', 'Hold to heat. Take it out when <strong>star sparks</strong> burst<span class="keys"> (hold <kbd>Space</kbd> / <kbd>Enter</kbd>)</span>'),
+    strike: L('<strong>輪が閉じた瞬間</strong>に、その場所を打て', 'Strike the spot <strong>the moment the ring closes</strong>'),
+    cut: L('鏨が<strong>中央</strong>に来たら、縦か横に折る<span class="keys">（<kbd>←</kbd>縦／<kbd>→</kbd>横）</span>', 'When the chisel hits the <strong>center</strong>, choose a fold<span class="keys"> (<kbd>←</kbd> / <kbd>→</kbd>)</span>'),
+    choice: L(`続けるか、終えるか（炭素 <strong>0.6〜0.75%</strong> が目安）`, `Keep folding or finish? (aim for <strong>0.6–0.75%</strong> carbon)`)
   };
 
   function renderControls() {
@@ -149,10 +149,10 @@ function stageForge({ root, scope, state, finish }) {
 
   function takeOut() {
     if (phase !== 'heat') return;
-    if (T < 950) { say('まだ沸いていない！沸き花を待て'); return; }
+    if (T < 950) { say(L('まだ沸いていない！沸き花を待て', 'Not hot enough! Wait for the sparks')); return; }
     blowing = false;
     heatQ = clamp(1 - Math.abs(T - 1320) / 170, 0, 1);
-    say(T > 1440 ? '沸かしすぎ…鋼が焼けた' : heatQ > 0.75 ? '良い沸き！' : T < 1220 ? '沸きが足りない' : 'まずまず', 1.2);
+    say(T > 1440 ? L('沸かしすぎ…鋼が焼けた', 'Overheated… the steel burned') : heatQ > 0.75 ? L('良い沸き！', 'Perfect heat!') : T < 1220 ? L('沸きが足りない', 'Not hot enough') : L('まずまず', 'Not bad'), 1.2);
     Sound.thud();
     startStrike();
   }
@@ -196,24 +196,24 @@ function stageForge({ root, scope, state, finish }) {
   function strike(x, y) {
     if (phase !== 'strike' || (hammerFx && hammerFx.t < 0.12)) return;
     const heatPow = clamp((T - 800) / 450, 0.15, 1) * (0.55 + 0.45 * heatQ);
-    let q = 0.15, label = '外した…';
+    let q = 0.15, label = L('外した…', 'Missed…');
     let hitSlag = null;
     if (target && target.hp > 0 && Math.hypot(x - target.x, y - target.y) < target.r + 16) {
       const dt = Math.abs(time - targetAt);
-      if (dt < 0.075) { q = 1; label = '会心！'; }
-      else if (dt < 0.17) { q = 0.65; label = '良し'; }
-      else { q = 0.3; label = '拍子がずれた'; }
+      if (dt < 0.075) { q = 1; label = L('会心！', 'Perfect!'); }
+      else if (dt < 0.17) { q = 0.65; label = L('良し', 'Good'); }
+      else { q = 0.3; label = L('拍子がずれた', 'Off beat'); }
       hitSlag = target;
     } else {
       hitSlag = slag.find(s => s.hp > 0 && Math.hypot(x - s.x, y - s.y) < s.r + 10);
-      if (hitSlag) { q = 0.3; label = '師匠の指示と違う所だ'; }
+      if (hitSlag) { q = 0.3; label = L('師匠の指示と違う所だ', 'Wrong spot!'); }
     }
     if (hitSlag) {
       hitSlag.hp -= q * heatPow * 1.15;
       if (hitSlag.hp <= 0.05) {
         hitSlag.hp = 0;
         parts.spark(hitSlag.x, hitSlag.y, Math.round(30 + 30 * q), { T: T + 120, min: 200, max: 700, life: 1.1 });
-        if (hitSlag.blister) { label = 'ふくれを潰した！'; Sound.crack(); }
+        if (hitSlag.blister) { label = L('ふくれを潰した！', 'Blister crushed!'); Sound.crack(); }
       }
     }
     if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
@@ -224,7 +224,7 @@ function stageForge({ root, scope, state, finish }) {
     T -= 7;
     Sound.clang(0.5 + q * 0.5, T < 950);
     parts.spark(x, y, Math.round(8 + q * 22 * heatGlow(T)), { T: T + 80 });
-    say(combo >= 3 && q >= 0.65 ? `${label}　${combo}連` : label, 0.6);
+    say(combo >= 3 && q >= 0.65 ? `${label}　${combo}${L('連', ' combo')}` : label, 0.6);
   }
 
   function endStrike() {
@@ -233,8 +233,8 @@ function stageForge({ root, scope, state, finish }) {
     const acc = accs.length ? accs.slice(-12).reduce((a, b) => a + b, 0) / Math.min(12, accs.length) : 0;
     const gain = (0.65 * removed + 0.35 * acc) * (coated ? 1 : 0.85);
     purity += (1 - purity) * 0.24 * gain;
-    if (leftBlister) { purity -= 0.02; say('ふくれが残った…', 1.2); }
-    else say(removed > 0.95 ? 'ノロを叩き出した！' : removed > 0.6 ? 'まずまず叩き出せた' : 'ノロが残っている…', 1.2);
+    if (leftBlister) { purity -= 0.02; say(L('ふくれが残った…', 'A blister remains…'), 1.2); }
+    else say(removed > 0.95 ? L('ノロを叩き出した！', 'Slag cleared!') : removed > 0.6 ? L('まずまず叩き出せた', 'Most slag removed') : L('ノロが残っている…', 'Slag remains…'), 1.2);
     purity = clamp(purity, 0.3, 0.995);
     phase = 'cut';
     cutT = Math.random() * 2;
@@ -247,8 +247,8 @@ function stageForge({ root, scope, state, finish }) {
     cutQ = clamp(1 - Math.abs(cutPos - 0.5) / 0.22, 0, 1);
     foldDir = dir;
     dirs.push(dir);
-    if (cutQ < 0.5) { purity -= 0.012 * (1 - cutQ); say('切れ目が偏った…層が乱れる', 1.2); }
-    else say(cutQ > 0.85 ? 'ぴたり中央！' : '良し', 0.9);
+    if (cutQ < 0.5) { purity -= 0.012 * (1 - cutQ); say(L('切れ目が偏った…層が乱れる', 'Off-center cut… uneven layers'), 1.2); }
+    else say(cutQ > 0.85 ? L('ぴたり中央！', 'Dead center!') : L('良し', 'Good'), 0.9);
     Sound.chisel(); scope.timeout(() => Sound.chisel(), 120);
     carbon -= 0.042;
     folds++;
@@ -279,8 +279,9 @@ function stageForge({ root, scope, state, finish }) {
     state.grain = grainOf();
     state.grainName = GRAIN_NAME[state.grain];
     finish(score,
-      `${folds}回折り返し、${(2 ** folds).toLocaleString()}層の鋼となった。地鉄は<strong>${state.grainName}</strong>。炭素量 約${carbon.toFixed(2)}%、最大${maxCombo}連打。` +
-      (carbon > 0.8 ? '炭素が多く硬いが、脆さが残る。' : carbon < 0.5 ? '炭素が抜けすぎ、粘るが刃が甘い。' : '硬さと粘りの釣り合いが良い。'));
+      L(`${folds}回折り返し、${(2 ** folds).toLocaleString()}層の鋼となった。地鉄は<strong>${state.grainName}</strong>。炭素量 約${carbon.toFixed(2)}%、最大${maxCombo}連打。`,
+        `Folded ${folds} times into ${(2 ** folds).toLocaleString()} layers, with <strong>${term(state.grainName)}</strong>. Carbon ~${carbon.toFixed(2)}%, best combo ${maxCombo}. `) +
+      (carbon > 0.8 ? L('炭素が多く硬いが、脆さが残る。', 'High carbon: hard but brittle.') : carbon < 0.5 ? L('炭素が抜けすぎ、粘るが刃が甘い。', 'Too little carbon: tough but a soft edge.') : L('硬さと粘りの釣り合いが良い。', 'A good balance of hardness and toughness.')));
   }
 
   renderControls();
@@ -421,7 +422,7 @@ function stageForge({ root, scope, state, finish }) {
     }
     if (combo >= 2) {
       g.font = `bold ${fs(c, 24, 1.8)}px "Shippori Mincho", serif`; g.fillStyle = '#ffd77a'; g.textAlign = 'left';
-      g.fillText(`${combo} 連`, 30, 30 + fs(c, 24, 1.8));
+      g.fillText(`${combo} ${L('連', 'combo')}`, 30, 30 + fs(c, 24, 1.8));
     }
   }
 
@@ -490,7 +491,7 @@ function stageForge({ root, scope, state, finish }) {
       // 師匠の拍子：一拍目に小槌で場所を示し、次の拍で打つ
       if (time >= nextBeat) {
         nextBeat += beat;
-        if (target && target.hp > 0 && time > targetAt + 0.2) { combo = 0; accs.push(0); target = null; say('打ち逃した', 0.5); }
+        if (target && target.hp > 0 && time > targetAt + 0.2) { combo = 0; accs.push(0); target = null; say(L('打ち逃した', 'Too late'), 0.5); }
         if (!target) {
           target = pickTarget();
           if (target) { targetAt = time + beat; masterFx = 1; Sound.tick(); }
@@ -498,8 +499,8 @@ function stageForge({ root, scope, state, finish }) {
       }
       const remaining = slag.some(s => s.hp > 0);
       if (!remaining || T < 860) {
-        if (!remaining) say('すべてのノロを叩き出した！', 1.2);
-        else say('鋼が冷えた', 1);
+        if (!remaining) say(L('すべてのノロを叩き出した！', 'All slag cleared!'), 1.2);
+        else say(L('鋼が冷えた', 'The steel has cooled'), 1);
         phase = 'cutwait';
         scope.timeout(endStrike, 600);
       }
@@ -529,19 +530,19 @@ function stageForge({ root, scope, state, finish }) {
       const by = H * 0.72 - 50 - 34 - (bh - 34), bx = 500 + (150 - bw) / 2;
       Sword.drawHotBar(g, bx, by, bw, bh, T, { seed: 17 + folds, time, layers: folds, scale: 40 });
       g.font = `bold ${fs(c, 30, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe9c4';
-      g.fillText(`${foldDir}に折り返し　${folds} 回目`, 575, 120);
+      g.fillText(L(`${foldDir}に折り返し　${folds} 回目`, `${foldDir === '縦' ? 'Lengthwise' : 'Crosswise'} fold #${folds}`), 575, 120);
       g.font = `${fs(c, 21)}px serif`; g.fillStyle = '#d8c8a8';
-      g.fillText(`${(2 ** folds).toLocaleString()} 層`, 575, 152);
+      g.fillText(`${(2 ** folds).toLocaleString()} ${L('層', 'layers')}`, 575, 152);
     } else {
       drawForgeScene(phase === 'heat');
       drawThermo();
       if (phase === 'heat' && T > 1440) {
         g.font = `bold ${fs(c, 20, 1.6)}px serif`; g.fillStyle = '#ff6a50'; g.textAlign = 'center';
-        g.fillText('焼けすぎ！ 鋼が燃えている', 170, 60);
+        g.fillText(L('焼けすぎ！ 鋼が燃えている', 'Too hot! The steel is burning'), 170, 60);
       }
       if (phase === 'coat' || phase === 'coating') {
         g.font = `${fs(c, 18)}px serif`; g.fillStyle = '#c9b89a'; g.textAlign = 'center';
-        g.fillText('藁灰・泥水', 375, H * 0.72 + 50);
+        g.fillText(L('藁灰・泥水', 'Ash & clay'), 375, H * 0.72 + 50);
       }
     }
     drawStars(dt);
@@ -556,15 +557,15 @@ function stageForge({ root, scope, state, finish }) {
     if (phase === 'strike' || phase === 'cutwait') {
       const ph = clamp(1 - (nextBeat - time) / beat, 0, 1);
       ui.status.innerHTML =
-        `<div class="stat"><span>拍子</span><i class="beat" style="opacity:${0.25 + 0.75 * ph};transform:scale(${0.7 + 0.5 * ph})"></i></div>` +
-        `<div class="meter heat"><span>鋼の熱</span><i><b style="width:${clamp((T - 860) / 460, 0, 1) * 100}%;background:${rgbStr(heatRGB(T))}"></b></i></div>` +
-        `<div class="stat"><span>連打</span><b>${combo}</b></div>`;
+        `<div class="stat"><span>${L('拍子', 'Beat')}</span><i class="beat" style="opacity:${0.25 + 0.75 * ph};transform:scale(${0.7 + 0.5 * ph})"></i></div>` +
+        `<div class="meter heat"><span>${L('鋼の熱', 'Heat')}</span><i><b style="width:${clamp((T - 860) / 460, 0, 1) * 100}%;background:${rgbStr(heatRGB(T))}"></b></i></div>` +
+        `<div class="stat"><span>${L('連打', 'Combo')}</span><b>${combo}</b></div>`;
     } else {
       ui.status.innerHTML =
-        `<div class="stat"><span>折り返し</span><b>${folds}</b>回</div>` +
-        meter('純度', (purity - 0.3) / 0.7) +
-        `<div class="stat"><span>炭素</span><b>${carbon.toFixed(2)}</b>%</div>` +
-        `<div class="stat"><span>地鉄</span><b>${dirs.length ? GRAIN_NAME[grainOf()] : '―'}</b></div>`;
+        `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}</b>${L('回', '')}</div>` +
+        meter(L('純度', 'Purity'), (purity - 0.3) / 0.7) +
+        `<div class="stat"><span>${L('炭素', 'Carbon')}</span><b>${carbon.toFixed(2)}</b>%</div>` +
+        `<div class="stat"><span>${L('地鉄', 'Grain')}</span><b>${dirs.length ? term(GRAIN_NAME[grainOf()]).replace(' grain', '') : '―'}</b></div>`;
     }
   });
 }
@@ -574,24 +575,24 @@ function stageForge({ root, scope, state, finish }) {
  * ============================================================ */
 const TSUKURI_METHODS = {
   kobuse: {
-    name: '甲伏せ', yomi: 'こうぶせ',
-    desc: 'U字に曲げた硬い<strong>皮鉄</strong>で、柔らかい<strong>心鉄</strong>を包む。最も広く用いられた造り込み。',
+    name: '甲伏せ', yomi: L('こうぶせ', 'Kobuse'),
+    desc: L('U字に曲げた硬い<strong>皮鉄</strong>で、柔らかい<strong>心鉄</strong>を包む。最も広く用いられた造り込み。', 'Hard <strong>skin steel</strong> bent into a U wraps a soft <strong>core steel</strong>. The most common method.'),
     pieces: ['shin'], tol: 30, mult: 1, tough: 1
   },
   sanmai: {
-    name: '本三枚', yomi: 'ほんさんまい',
-    desc: '左右の<strong>皮鉄</strong>で挟み、刃に<strong>刃鉄</strong>、中に<strong>心鉄</strong>を据える。組むのは難しいが、強く粘る刀になる。',
+    name: '本三枚', yomi: L('ほんさんまい', 'Honsanmai'),
+    desc: L('左右の<strong>皮鉄</strong>で挟み、刃に<strong>刃鉄</strong>、中に<strong>心鉄</strong>を据える。組むのは難しいが、強く粘る刀になる。', '<strong>Skin steel</strong> on both sides, <strong>edge steel</strong> below, <strong>core steel</strong> inside. Harder to assemble, but very tough.'),
     pieces: ['ha', 'shin'], tol: 22, mult: 1.08, tough: 1.05
   },
   maru: {
-    name: '丸鍛え', yomi: 'まるぎたえ',
-    desc: '心鉄を入れず、一種類の鋼だけで鍛える古い造り。手間は少ないが、硬く折れやすい刀になる。',
+    name: '丸鍛え', yomi: L('まるぎたえ', 'Maru-gitae'),
+    desc: L('心鉄を入れず、一種類の鋼だけで鍛える古い造り。手間は少ないが、硬く折れやすい刀になる。', 'An old method using a single steel with no core. Easy, but the blade is hard and brittle.'),
     pieces: [], tol: 0, mult: 0.7, tough: 0.75
   }
 };
 
 function stageTsukuri({ root, scope, state, finish }) {
-  const ui = stageLayout(root, '<strong>造り込み</strong>の方法を選べ');
+  const ui = stageLayout(root, L('<strong>造り込み</strong>の方法を選べ', 'Choose a <strong>lamination</strong> method'));
   const [c, g] = makeCanvas(860, 400);
   const W = c.W, H = c.H;
   const parts = makeParticles();
@@ -624,24 +625,24 @@ function stageTsukuri({ root, scope, state, finish }) {
     ui.view.append(c);
     if (M.pieces.length) {
       phase = 'place';
-      ui.hint.innerHTML = '<strong>中央</strong>に来た瞬間に落とせ<span class="keys">（<kbd>Space</kbd>）</span>';
+      ui.hint.innerHTML = L('<strong>中央</strong>に来た瞬間に落とせ<span class="keys">（<kbd>Space</kbd>）</span>', 'Drop it when it reaches the <strong>center</strong><span class="keys"> (<kbd>Space</kbd>)</span>');
     } else {
       phase = 'heat';
-      ui.hint.innerHTML = 'そのまま沸かして鍛える';
+      ui.hint.innerHTML = L('そのまま沸かして鍛える', 'Heat and forge it as is');
       setHeatHint();
     }
     renderControls();
   }
   function pieceLabel(k) { return k === 'shin' ? '<strong>心鉄</strong>' : '<strong>刃鉄</strong>'; }
   function setHeatHint() {
-    ui.hint.innerHTML = '<strong>沸かし付け</strong>：沸かして取り出し、拍子よく打つ<span class="keys">（<kbd>Space</kbd>長押し／<kbd>Enter</kbd>／<kbd>Space</kbd>）</span>';
+    ui.hint.innerHTML = L('<strong>沸かし付け</strong>：沸かして取り出し、拍子よく打つ<span class="keys">（<kbd>Space</kbd>長押し／<kbd>Enter</kbd>／<kbd>Space</kbd>）</span>', '<strong>Forge-weld</strong>: heat, take out, strike on the beat<span class="keys"> (hold <kbd>Space</kbd> / <kbd>Enter</kbd> / <kbd>Space</kbd>)</span>');
   }
 
   // ---- 操作
-  const dropBtn = btn('落とす', 'primary big', () => drop());
-  const blowBtn = btn('ふいごを吹く（長押し）', 'primary hold');
-  const takeBtn = btn('取り出して打つ', '', () => takeOut());
-  const hitBtn = btn('打つ', 'primary big', () => strike());
+  const dropBtn = btn(L('落とす', 'Drop'), 'primary big', () => drop());
+  const blowBtn = btn(L('ふいごを吹く（長押し）', 'Pump Bellows (hold)'), 'primary hold');
+  const takeBtn = btn(L('取り出して打つ', 'Take Out & Strike'), '', () => takeOut());
+  const hitBtn = btn(L('打つ', 'Strike'), 'primary big', () => strike());
   const startBlow = e => { e && e.preventDefault(); if (phase === 'heat') { blowing = true; Sound.init(); } };
   const stopBlow = () => { blowing = false; };
   scope.on(blowBtn, 'pointerdown', startBlow);
@@ -677,10 +678,10 @@ function stageTsukuri({ root, scope, state, finish }) {
 
   function takeOut() {
     if (phase !== 'heat') return;
-    if (T < 900) { say('まだ沸いていない！'); return; }
+    if (T < 900) { say(L('まだ沸いていない！', 'Not hot enough!')); return; }
     blowing = false;
     heatQ = clamp(1 - Math.abs(T - 1310) / 170, 0, 1);
-    say(heatQ > 0.75 ? '良い沸き！' : T > 1430 ? '沸かしすぎ…' : '沸きが足りない', 1.2);
+    say(heatQ > 0.75 ? L('良い沸き！', 'Perfect heat!') : T > 1430 ? L('沸かしすぎ…', 'Overheated…') : L('沸きが足りない', 'Not hot enough'), 1.2);
     phase = 'strike';
     strikes = [];
     mTime = Math.random() * 2;
@@ -696,7 +697,7 @@ function stageTsukuri({ root, scope, state, finish }) {
     hammer = 1;
     Sound.clang(0.6 + q * 0.4, T < 950);
     parts.spark(570, 228, Math.round(10 + q * 40 * heatGlow(T) * 1.5), { T: T + 60 });
-    say(q === 1 ? '会心！' : q > 0.5 ? '良し' : '外した…', 0.6);
+    say(q === 1 ? L('会心！', 'Perfect!') : q > 0.5 ? L('良し', 'Good') : L('外した…', 'Missed…'), 0.6);
     T -= 50;
     if (strikes.length >= 4) scope.timeout(() => { phase = 'weld'; weldAnim = 0; renderControls(); }, 350);
   }
@@ -717,11 +718,11 @@ function stageTsukuri({ root, scope, state, finish }) {
     const off = placed.map(p => Math.abs(p.dx));
     const worst = off.length ? Math.max(...off) : 0;
     finish(score,
-      `${M.name}で造り込んだ。` +
-      (method === 'maru' ? '心鉄がないため、刃は硬いが折れやすい。' :
-        worst <= 6 ? '心鉄が中央にぴたりと収まった。' :
-        worst <= M.tol ? '心鉄がやや偏ったが、許容の内。' : '心鉄が大きく偏った。研ぎ減ると心鉄が刃に出るかもしれぬ。') +
-      (weld > 0.75 ? '沸かし付けも見事で、鋼はしっかりと一体になった。' : weld > 0.45 ? '沸かし付けはまずまず。' : '鍛着が甘く、鍛え割れの恐れがある。'));
+      L(`${M.name}で造り込んだ。`, `Laminated with ${term(M.name)}. `) +
+      (method === 'maru' ? L('心鉄がないため、刃は硬いが折れやすい。', 'With no core, the blade is hard but brittle. ') :
+        worst <= 6 ? L('心鉄が中央にぴたりと収まった。', 'The core sits perfectly centered. ') :
+        worst <= M.tol ? L('心鉄がやや偏ったが、許容の内。', 'The core is slightly off, but acceptable. ') : L('心鉄が大きく偏った。研ぎ減ると心鉄が刃に出るかもしれぬ。', 'The core is far off-center and may show through after polishing. ')) +
+      (weld > 0.75 ? L('沸かし付けも見事で、鋼はしっかりと一体になった。', 'A superb weld — the steels became one.') : weld > 0.45 ? L('沸かし付けはまずまず。', 'A decent weld.') : L('鍛着が甘く、鍛え割れの恐れがある。', 'A weak weld that may cause forging cracks.')));
   }
 
   /* 断面図。key: 方法、T: 温度、ghost: 選択画面用のすべて配置済み表示 */
@@ -751,29 +752,32 @@ function stageTsukuri({ root, scope, state, finish }) {
       }
     };
     if (key === 'kobuse') {
-      shape([[-80, 160], [-36, 160], [-36, 40], [36, 40], [36, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, '皮鉄');
+      shape([[-80, 160], [-36, 160], [-36, 40], [36, 40], [36, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, L('皮鉄', 'Skin'));
       if (ghost || !hidden.shin) {
         const d = offs.shin || 0;
-        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 42], [-34 + d, 42]], shin, '心鉄');
+        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 42], [-34 + d, 42]], shin, L('心鉄', 'Core'));
       }
     } else if (key === 'sanmai') {
       shape([[-80, 160], [-36, 160], [-36, 10], [-60, 6], [-80, 30]], kawa, '');
       shape([[36, 160], [80, 160], [80, 30], [60, 6], [36, 10]], kawa, '');
       if (s > 0.8) {
         gg.fillStyle = 'rgba(40,15,5,0.75)'; gg.font = `bold ${15 * s}px "Shippori Mincho", serif`; gg.textAlign = 'center';
+        if (EN) { gg.fillText('Skin', cx - 58 * s, bottom - 80 * s); gg.fillText('Skin', cx + 58 * s, bottom - 80 * s); }
+        else {
         gg.fillText('皮', cx - 58 * s, bottom - 90 * s); gg.fillText('鉄', cx - 58 * s, bottom - 70 * s);
         gg.fillText('皮', cx + 58 * s, bottom - 90 * s); gg.fillText('鉄', cx + 58 * s, bottom - 70 * s);
+        }
       }
       if (ghost || !hidden.ha) {
         const d = offs.ha || 0;
-        shape([[-34 + d, 50], [34 + d, 50], [34 + d, 10], [0 + d, 0], [-34 + d, 10]], ha, '刃鉄');
+        shape([[-34 + d, 50], [34 + d, 50], [34 + d, 10], [0 + d, 0], [-34 + d, 10]], ha, L('刃鉄', 'Edge'));
       }
       if (ghost || !hidden.shin) {
         const d = offs.shin || 0;
-        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 52], [-34 + d, 52]], shin, '心鉄');
+        shape([[-34 + d, 158], [34 + d, 158], [34 + d, 52], [-34 + d, 52]], shin, L('心鉄', 'Core'));
       }
     } else {
-      shape([[-80, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, '鋼');
+      shape([[-80, 160], [80, 160], [80, 34], [52, 6], [0, 0], [-52, 6], [-80, 34]], kawa, L('鋼', 'Steel'));
     }
   }
 
@@ -804,7 +808,7 @@ function stageTsukuri({ root, scope, state, finish }) {
       if (Math.abs(d) > 24) {                                      // 心鉄が表に出てしまう
         gg.fillStyle = '#ffb38a'; gg.font = `${fs(c, 17)}px serif`; gg.textAlign = 'center';
         const q = P(d > 0 ? 80 : -80, 175);
-        gg.fillText('心鉄が皮から出ている', q[0], q[1]);
+        gg.fillText(L('心鉄が皮から出ている', 'Core exposed!'), q[0], q[1]);
       }
     }
     if (method === 'sanmai') {
@@ -830,8 +834,8 @@ function stageTsukuri({ root, scope, state, finish }) {
       gg.font = `bold ${fs(c, 18)}px "Shippori Mincho", serif`; gg.textAlign = 'center';
       if (method !== 'maru') {
         const q1 = P(off('shin'), 105), q2 = P(off('shin') > 0 ? -60 : 60, 120);
-        gg.fillText('心鉄', q1[0], q1[1]); gg.fillText('皮鉄', q2[0], q2[1]);
-        if (method === 'sanmai') { const q3 = P(off('ha'), 22); gg.fillText('刃鉄', q3[0], q3[1]); }
+        gg.fillText(L('心鉄', 'Core'), q1[0], q1[1]); gg.fillText(L('皮鉄', 'Skin'), q2[0], q2[1]);
+        if (method === 'sanmai') { const q3 = P(off('ha'), 22); gg.fillText(L('刃鉄', 'Edge'), q3[0], q3[1]); }
       }
     }
   }
@@ -856,7 +860,7 @@ function stageTsukuri({ root, scope, state, finish }) {
         Sound.thud();
         Sound.clang(0.4, true);
         const dx = Math.abs(placed[placed.length - 1].dx);
-        say(dx <= 6 ? 'ぴたり！' : dx <= M.tol ? '少しずれた' : '大きくずれた…', 1);
+        say(dx <= 6 ? L('ぴたり！', 'Perfect fit!') : dx <= M.tol ? L('少しずれた', 'Slightly off') : L('大きくずれた…', 'Way off…'), 1);
         pieceIdx++;
         if (pieceIdx < M.pieces.length) { phase = 'place'; renderControls(); }
         else {
@@ -896,7 +900,7 @@ function stageTsukuri({ root, scope, state, finish }) {
       ag.addColorStop(0, '#55575e'); ag.addColorStop(0.2, '#26272c'); ag.addColorStop(1, '#111215');
       g.fillStyle = ag; g.fillRect(200, BOTTOM, 460, 30);
       g.fillStyle = '#c9b89a'; g.font = `${fs(c, 16)}px serif`; g.textAlign = 'left';
-      g.fillText('断面図', 24, 30);
+      g.fillText(L('断面図', 'Cross-section'), 24, 30);
       const offs = {}, hidden = {};
       M.pieces.forEach(k => { hidden[k] = true; });
       placed.forEach((p, i) => {
@@ -916,7 +920,7 @@ function stageTsukuri({ root, scope, state, finish }) {
         g.restore();
         g.strokeStyle = 'rgba(60,20,5,0.9)'; g.strokeRect(CX - 34 + dx, yTop, 68, h);
         g.fillStyle = 'rgba(40,15,5,0.75)'; g.font = `bold ${fs(c, 18)}px "Shippori Mincho", serif`; g.textAlign = 'center';
-        g.fillText(kind === 'shin' ? '心鉄' : '刃鉄', CX + dx, yTop + h / 2 + 5);
+        g.fillText(kind === 'shin' ? L('心鉄', 'Core') : L('刃鉄', 'Edge'), CX + dx, yTop + h / 2 + 5);
         // 箸（鋏）
         g.strokeStyle = '#2b2b2f'; g.lineWidth = 5;
         g.beginPath(); g.moveTo(CX + dx - 20, yTop + 4); g.lineTo(CX + dx - 60, yTop - 60); g.moveTo(CX + dx + 20, yTop + 4); g.lineTo(CX + dx + 60, yTop - 60); g.stroke();
@@ -934,7 +938,7 @@ function stageTsukuri({ root, scope, state, finish }) {
       }
       if (phase === 'weld') {
         g.font = `bold ${fs(c, 28, 1.6)}px "Shippori Mincho", serif`; g.textAlign = 'center'; g.fillStyle = '#ffe9c4';
-        g.fillText('鍛着！', CX, 90);
+        g.fillText(L('鍛着！', 'Welded!'), CX, 90);
       }
     } else {
       // 沸かし付け：鍛冶場
@@ -971,7 +975,7 @@ function stageTsukuri({ root, scope, state, finish }) {
         g.fillStyle = 'rgba(232,198,108,0.7)'; g.fillRect(tx + tw / 2 - tw * 0.035, ty2 - 10, tw * 0.07, 20);
         g.fillStyle = '#fff'; g.fillRect(tx + tw / 2 + marker * tw / 2 - 2, ty2 - 14, 4, 28);
         g.fillStyle = '#c9b89a'; g.font = `${fs(c, 16)}px serif`; g.textAlign = 'left';
-        g.fillText(`鎚 ${strikes.length + 1} / 4`, tx, ty2 + 34);
+        g.fillText(`${L('鎚', 'Strike')} ${strikes.length + 1} / 4`, tx, ty2 + 34);
       }
     }
     parts.draw(g);
@@ -981,9 +985,9 @@ function stageTsukuri({ root, scope, state, finish }) {
       g.fillText(msg, W / 2 - 40, 130);
     }
     ui.status.innerHTML =
-      `<div class="stat"><span>造り込み</span><b>${M.name}</b></div>` +
-      (M.pieces.length ? `<div class="stat"><span>組み</span><b>${Math.min(placed.length, M.pieces.length)} / ${M.pieces.length}</b></div>` : '') +
-      `<div class="stat"><span>工程</span><b>${phase === 'place' || phase === 'drop' || phase === 'placed' ? '組み合わせ' : '沸かし付け'}</b></div>`;
+      `<div class="stat"><span>${L('造り込み', 'Method')}</span><b>${term(M.name)}</b></div>` +
+      (M.pieces.length ? `<div class="stat"><span>${L('組み', 'Pieces')}</span><b>${Math.min(placed.length, M.pieces.length)} / ${M.pieces.length}</b></div>` : '') +
+      `<div class="stat"><span>${L('工程', 'Phase')}</span><b>${phase === 'place' || phase === 'drop' || phase === 'placed' ? L('組み合わせ', 'Assembly') : L('沸かし付け', 'Welding')}</b></div>`;
   });
 }
 
@@ -991,7 +995,7 @@ function stageTsukuri({ root, scope, state, finish }) {
  * 三、素延べ・火造り
  * ============================================================ */
 function stageShape({ root, scope, state, finish }) {
-  const ui = stageLayout(root, '<strong>▼</strong>の箇所を打ち、<strong>点線</strong>に揃えよ。冷えたら火床へ<span class="keys">（1：強　2：弱　R：火床）</span>');
+  const ui = stageLayout(root, L('<strong>▼</strong>の箇所を打ち、<strong>点線</strong>に揃えよ。冷えたら火床へ<span class="keys">（1：強　2：弱　R：火床）</span>', 'Hammer the <strong>▼</strong> spots down to the <strong>dotted line</strong>. Reheat when cool<span class="keys"> (1: strong · 2: light · R: reheat)</span>'));
   const [c, g] = makeCanvas(860, 330);
   c.style.touchAction = 'none';
   ui.view.append(c);
@@ -1008,10 +1012,10 @@ function stageShape({ root, scope, state, finish }) {
   let reheating = 0, timeLeft = 75, time = 0, ended = false;
   const crackSegs = new Set();
 
-  const strongBtn = btn('強く打つ', 'toggle on', () => setPower('strong'));
-  const lightBtn = btn('軽く打つ', 'toggle', () => setPower('light'));
-  const fireBtn = btn('火床に戻す', '', () => reheat());
-  const doneBtn = btn('火造りを終える', 'primary', () => end());
+  const strongBtn = btn(L('強く打つ', 'Strong'), 'toggle on', () => setPower('strong'));
+  const lightBtn = btn(L('軽く打つ', 'Light'), 'toggle', () => setPower('light'));
+  const fireBtn = btn(L('火床に戻す', 'Reheat'), '', () => reheat());
+  const doneBtn = btn(L('火造りを終える', 'Finish Shaping'), 'primary', () => end());
   ui.controls.append(strongBtn, lightBtn, fireBtn, doneBtn);
   function setPower(p) { power = p; strongBtn.classList.toggle('on', p === 'strong'); lightBtn.classList.toggle('on', p === 'light'); }
   function reheat() { if (reheating > 0 || ended) return; reheating = 1.1; Sound.whoosh(); }
@@ -1062,8 +1066,8 @@ function stageShape({ root, scope, state, finish }) {
     const score = Math.round(clamp(100 - dev * 6.5 - cracks.length * 12, 0, 100));
     state.shapeCracks = cracks.length;
     finish(score,
-      (dev < 1.5 ? '肉置きの整った美しい姿。' : dev < 4 ? 'やや凹凸が残るが、刀の姿になった。' : '姿が歪んでいる。研ぎでも直しきれぬかもしれぬ。') +
-      (cracks.length ? ` 冷えた鋼を打ち、${cracks.length}箇所に鍛え割れが生じた。` : ''));
+      (dev < 1.5 ? L('肉置きの整った美しい姿。', 'A beautiful, even form.') : dev < 4 ? L('やや凹凸が残るが、刀の姿になった。', 'Some unevenness remains, but it is a sword now.') : L('姿が歪んでいる。研ぎでも直しきれぬかもしれぬ。', 'The form is warped — polishing may not fix it.')) +
+      (cracks.length ? L(` 冷えた鋼を打ち、${cracks.length}箇所に鍛え割れが生じた。`, ` Striking cold steel caused ${cracks.length} crack(s).`) : ''));
   }
 
   scope.loop((dt) => {
@@ -1095,7 +1099,7 @@ function stageShape({ root, scope, state, finish }) {
     if (reheating > 0) {
       Sword.drawCoals(g, X0, BASE - 40, X1 - X0, 50, 1, time);
       g.font = `bold ${fs(c, 24, 1.6)}px serif`; g.fillStyle = '#ffe2b0'; g.textAlign = 'center';
-      g.fillText('火床で熱し直し中…', W / 2, 80);
+      g.fillText(L('火床で熱し直し中…', 'Reheating in the forge…'), W / 2, 80);
     } else {
       // 延べ棒：各区画の高さで上面を作る
       const topFn = u => {
@@ -1134,7 +1138,7 @@ function stageShape({ root, scope, state, finish }) {
         const y = BASE - Math.max(hgt[i], target[i]) - 14;
         if (Math.abs(e) <= 1) { g.fillStyle = '#9fe0a0'; g.fillText('◯', x, y); }
         else if (e > 0) { g.fillStyle = '#ffb38a'; g.fillText('▼', x, y); }
-        else { g.fillStyle = '#8ab8ff'; g.fillText('薄', x, y); }
+        else { g.fillStyle = '#8ab8ff'; g.fillText(L('薄', '▲'), x, y); }
       }
       if (hover >= 0) {
         g.fillStyle = 'rgba(255,255,255,0.07)';
@@ -1157,10 +1161,10 @@ function stageShape({ root, scope, state, finish }) {
     // 温度の目安
     const tc = heatRGB(T);
     ui.status.innerHTML =
-      `<div class="stat"><span>鋼の色</span><i class="swatch" style="background:${rgbStr(tc)};box-shadow:0 0 12px ${rgbStr(tc, heatGlow(T))}"></i><b>${T < 700 ? '冷えている' : T < 850 ? '赤' : '橙'}</b></div>` +
-      `<div class="stat"><span>鎚</span><b>${power === 'strong' ? '強' : '弱'}</b></div>` +
-      `<div class="stat"><span>ひび</span><b>${cracks.length}</b></div>` +
-      `<div class="stat"><span>残り</span><b>${Math.ceil(timeLeft)}</b> 秒</div>`;
+      `<div class="stat"><span>${L('鋼の色', 'Color')}</span><i class="swatch" style="background:${rgbStr(tc)};box-shadow:0 0 12px ${rgbStr(tc, heatGlow(T))}"></i><b>${T < 700 ? L('冷えている', 'Cold') : T < 850 ? L('赤', 'Red') : L('橙', 'Orange')}</b></div>` +
+      `<div class="stat"><span>${L('鎚', 'Hammer')}</span><b>${power === 'strong' ? L('強', 'Strong') : L('弱', 'Light')}</b></div>` +
+      `<div class="stat"><span>${L('ひび', 'Cracks')}</span><b>${cracks.length}</b></div>` +
+      `<div class="stat"><span>${L('残り', 'Time')}</span><b>${Math.ceil(timeLeft)}</b> ${L('秒', 's')}</div>`;
   });
 }
 
@@ -1191,7 +1195,7 @@ function scoreHamon(h, drawn) {
 }
 
 function stageClay({ root, scope, state, finish }) {
-  const ui = stageLayout(root, '刀身を<strong>なぞって刃文</strong>を描け（型も選べる）');
+  const ui = stageLayout(root, L('刀身を<strong>なぞって刃文</strong>を描け（型も選べる）', '<strong>Trace a hamon line</strong> on the blade (or pick a pattern)'));
   const [c, g] = makeCanvas(900, 260);
   c.style.touchAction = 'none';
   ui.view.append(c);
@@ -1240,16 +1244,16 @@ function stageClay({ root, scope, state, finish }) {
   scope.on(c, 'pointercancel', () => { drawing = false; });
 
   const presetRow = el('div', 'preset-row');
-  presetRow.append(el('span', 'label', '型：'));
+  presetRow.append(el('span', 'label', L('型：', 'Pattern:')));
   Object.keys(HAMON_PRESETS).forEach(name => {
-    presetRow.append(btn(name, 'small', () => {
+    presetRow.append(btn(EN ? term(name).replace(/ \(.+\)$/, '') : name, 'small', () => {
       const f = HAMON_PRESETS[name];
       h = Array.from({ length: HAMON_N }, (_, i) => f(i / (HAMON_N - 1)));
       preset = name;
     }));
   });
-  const clearBtn = btn('描き直す', '', () => { h = new Array(HAMON_N).fill(null); preset = null; });
-  const okBtn = btn('この刃文で土を置く', 'primary', () => decide());
+  const clearBtn = btn(L('描き直す', 'Clear'), '', () => { h = new Array(HAMON_N).fill(null); preset = null; });
+  const okBtn = btn(L('この刃文で土を置く', 'Apply Clay'), 'primary', () => decide());
   ui.controls.append(presetRow, clearBtn, okBtn);
 
   function filled() {
@@ -1281,8 +1285,8 @@ function stageClay({ root, scope, state, finish }) {
     state.clayScore = score;
     Sound.thud();
     scope.timeout(() => finish(score,
-      (preset ? `「${preset}」の型で土を置いた。` : '自ら描いた刃文で土を置いた。') +
-      (score >= 85 ? '土置きは申し分ない。' : score >= 60 ? '多少乱れがあるが、良い刃文になりそうだ。' : '土の線が乱れている。焼きが不安定になるだろう。')), 1400);
+      (preset ? L(`「${preset}」の型で土を置いた。`, `Clay applied in the ${term(preset)} pattern. `) : L('自ら描いた刃文で土を置いた。', 'Clay applied along your own hamon. ')) +
+      (score >= 85 ? L('土置きは申し分ない。', 'Flawless clay work.') : score >= 60 ? L('多少乱れがあるが、良い刃文になりそうだ。', 'A little uneven, but it should make a fine hamon.') : L('土の線が乱れている。焼きが不安定になるだろう。', 'The line is erratic; the hardening will be uneven.'))), 1400);
   }
 
   scope.loop(dt => {
@@ -1331,8 +1335,8 @@ function stageClay({ root, scope, state, finish }) {
       g.setLineDash([]);
       g.font = `${fs(c, 16)}px serif`; g.fillStyle = 'rgba(255,200,180,0.7)'; g.textAlign = 'left';
       const e0 = G.P(0.06, 0.0), s0 = G.P(0.06, 1);
-      g.fillText('刃先', e0[0], e0[1] + 18);
-      g.fillText('棟', s0[0], s0[1] - 8);
+      g.fillText(L('刃先', 'Edge'), e0[0], e0[1] + 18);
+      g.fillText(L('棟', 'Spine'), s0[0], s0[1] - 8);
     }
     function bandPath(v0, v1) {
       const p = new Path2D();
@@ -1348,14 +1352,14 @@ function stageClay({ root, scope, state, finish }) {
  * ============================================================ */
 function stageQuench({ root, scope, state, finish }) {
   const TARGET = 790;
-  const ui = stageLayout(root, '<strong>月の出の色</strong>になった瞬間に水へ<span class="keys">（<kbd>Space</kbd>）</span>');
+  const ui = stageLayout(root, L('<strong>月の出の色</strong>になった瞬間に水へ<span class="keys">（<kbd>Space</kbd>）</span>', 'Quench the moment it glows <strong>“rising-moon” orange</strong><span class="keys"> (<kbd>Space</kbd>)</span>'));
   const [c, g] = makeCanvas(900, 360);
   ui.view.append(c);
   const W = c.W, H = c.H;
   const parts = makeParticles();
   const swatch = el('div', 'ref-swatch');
-  swatch.innerHTML = `<i style="background:${rgbStr(heatRGB(TARGET))};box-shadow:0 0 18px ${rgbStr(heatRGB(TARGET), 0.8)}"></i><span>月の出の色（目標）</span>`;
-  const qBtn = btn('水に入れる！', 'primary big', () => quench());
+  swatch.innerHTML = `<i style="background:${rgbStr(heatRGB(TARGET))};box-shadow:0 0 18px ${rgbStr(heatRGB(TARGET), 0.8)}"></i><span>${L('月の出の色（目標）', 'Target: rising-moon color')}</span>`;
+  const qBtn = btn(L('水に入れる！', 'Quench!'), 'primary big', () => quench());
   ui.controls.append(swatch, qBtn);
 
   let T = 380, time = 0, phase = 'heat', qT = 0, crack = false, anim = 0, soriNow = 0, finalSori = 0;
@@ -1403,12 +1407,12 @@ function stageQuench({ root, scope, state, finish }) {
         let score = Math.round(clamp(100 - Math.max(0, d - 8) * 1.15, 0, 100));
         if (crack) score = Math.round(score * 0.4);
         scope.timeout(() => finish(score,
-          `入水時の温度は約${Math.round(qT)}℃。` +
-          (crack ? '「ピシッ」…無情にも刃に焼割れが走った。' :
-           qT < 700 ? '温度が低すぎた。焼きがほとんど入っていない。' :
-           qT < 760 ? 'やや低い。刃文は淡く、刃の硬さも足りない。' :
-           qT <= 825 ? '見事な焼入れ。刃文が冴え、美しい反りが生まれた。' :
-           '高めの温度。沸が荒れ、刃が脆くなったかもしれぬ。')), 900);
+          L(`入水時の温度は約${Math.round(qT)}℃。`, `Quenched at about ${Math.round(qT)}°C. `) +
+          (crack ? L('「ピシッ」…無情にも刃に焼割れが走った。', '*Crack!* … A quench crack ran through the edge.') :
+           qT < 700 ? L('温度が低すぎた。焼きがほとんど入っていない。', 'Far too cool — the blade barely hardened.') :
+           qT < 760 ? L('やや低い。刃文は淡く、刃の硬さも足りない。', 'A bit cool: a faint hamon and a softer edge.') :
+           qT <= 825 ? L('見事な焼入れ。刃文が冴え、美しい反りが生まれた。', 'A superb quench — a vivid hamon and a graceful curve.') :
+           L('高めの温度。沸が荒れ、刃が脆くなったかもしれぬ。', 'Rather hot — the crystals coarsened and the edge may be brittle.'))), 900);
       }
     }
     parts.update(dt);
@@ -1455,7 +1459,7 @@ function stageQuench({ root, scope, state, finish }) {
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = rg; g.fillRect(0, 0, W, H);
     g.restore();
-    ui.status.innerHTML = phase === 'heat' ? '<div class="stat"><b>色を見極めよ…</b></div>' : '<div class="stat"><b>ジュッ——</b></div>';
+    ui.status.innerHTML = phase === 'heat' ? `<div class="stat"><b>${L('色を見極めよ…', 'Watch the color…')}</b></div>` : `<div class="stat"><b>${L('ジュッ——', 'Hssss——')}</b></div>`;
   });
 }
 
@@ -1464,11 +1468,11 @@ function stageQuench({ root, scope, state, finish }) {
  * ============================================================ */
 function stagePolish({ root, scope, state, finish }) {
   const STONES = [
-    { name: '備水砥', yomi: 'びんすいど', desc: '荒砥。刀の形を整える', min: 500, max: 1050, color: '#7a6a58', need: 3000 },
-    { name: '改正名倉砥', yomi: 'かいせいなぐらど', desc: '中砥。荒砥の目を消す', min: 360, max: 760, color: '#9c8a74', need: 3200 },
-    { name: '内曇砥', yomi: 'うちぐもりど', desc: '仕上砥。地鉄と刃文を引き出す', min: 220, max: 480, color: '#c2b8a4', need: 3400 }
+    { name: L('備水砥', 'Binsui (coarse)'), yomi: 'びんすいど', desc: '荒砥。刀の形を整える', min: 500, max: 1050, color: '#7a6a58', need: 3000 },
+    { name: L('改正名倉砥', 'Nagura (medium)'), yomi: 'かいせいなぐらど', desc: '中砥。荒砥の目を消す', min: 360, max: 760, color: '#9c8a74', need: 3200 },
+    { name: L('内曇砥', 'Uchigumori (fine)'), yomi: 'うちぐもりど', desc: '仕上砥。地鉄と刃文を引き出す', min: 220, max: 480, color: '#c2b8a4', need: 3400 }
   ];
-  const ui = stageLayout(root, '<strong>緑の速さ</strong>を保ち、左右にこすれ');
+  const ui = stageLayout(root, L('<strong>緑の速さ</strong>を保ち、左右にこすれ', 'Drag left and right, keeping the speed in the <strong>green</strong>'));
   const [c, g] = makeCanvas(900, 300);
   c.style.touchAction = 'none';
   ui.view.append(c);
@@ -1529,9 +1533,9 @@ function stagePolish({ root, scope, state, finish }) {
       state.polish = score;
       state.scratches = Math.round(scratches[2] + scratches[1] * 0.4 + scratches[0] * 0.1);
       scope.timeout(() => finish(score,
-        score >= 90 ? '鏡のような地鉄に、刃文が冴え冴えと浮かび上がった。' :
-        score >= 65 ? '地鉄の肌がよく見える。わずかに研ぎ傷が残る。' :
-        '研ぎ傷が目立つ。せっかくの地鉄が曇っている。'), 1200);
+        score >= 90 ? L('鏡のような地鉄に、刃文が冴え冴えと浮かび上がった。', 'A mirror finish — the hamon shines brilliantly from the steel.') :
+        score >= 65 ? L('地鉄の肌がよく見える。わずかに研ぎ傷が残る。', 'The grain shows well, with a few scratches.') :
+        L('研ぎ傷が目立つ。せっかくの地鉄が曇っている。', 'Scratches cloud the beautiful steel.')), 1200);
     }
   }
 
@@ -1581,7 +1585,7 @@ function stagePolish({ root, scope, state, finish }) {
       g.beginPath(); g.roundRect ? g.roundRect(sx - 55, sy - 32, 110, 54, 5) : g.rect(sx - 55, sy - 32, 110, 54); g.fill();
       g.restore();
       g.fillStyle = 'rgba(30,20,10,0.8)'; g.font = `${fs(c, 16)}px serif`; g.textAlign = 'center';
-      g.fillText(st.name, sx, sy);
+      g.fillText(st.name.replace(/ \(.+\)$/, ''), sx, sy);
       // 速度メーター
       const mx = 120, mw = 660, my = 28, MAXS = 1400;
       g.fillStyle = 'rgba(0,0,0,0.5)';
@@ -1594,17 +1598,17 @@ function stagePolish({ root, scope, state, finish }) {
       g.fillStyle = flash > 0 ? '#ff6a50' : '#fff';
       g.fillRect(nx - 2, my - 8, 4, 26);
       g.fillStyle = '#c9b89a'; g.textAlign = 'left'; g.font = `${fs(c, 15)}px serif`;
-      g.fillText('遅い', mx, my + 32); g.textAlign = 'right'; g.fillText('速すぎ（傷）', mx + mw, my + 32);
+      g.fillText(L('遅い', 'Slow'), mx, my + 32); g.textAlign = 'right'; g.fillText(L('速すぎ（傷）', 'Too fast (scratch)'), mx + mw, my + 32);
       if (flash > 0) {
         g.font = `bold ${fs(c, 22, 1.6)}px serif`; g.fillStyle = `rgba(255,120,90,${flash * 2.5})`; g.textAlign = 'center';
-        g.fillText('研ぎ傷！', W / 2, 90);
+        g.fillText(L('研ぎ傷！', 'Scratch!'), W / 2, 90);
       }
     }
     const st = STONES[Math.min(si, STONES.length - 1)];
     ui.status.innerHTML =
-      `<div class="stat"><span>砥石 ${si + 1}/3</span><b>${st.name}</b></div>` +
-      meter('研ぎ', ended ? 1 : prog) +
-      `<div class="stat"><span>研ぎ傷</span><b>${scratches.reduce((a, b) => a + b, 0)}</b></div>`;
+      `<div class="stat"><span>${L('砥石', 'Stone')} ${si + 1}/3</span><b>${st.name}</b></div>` +
+      meter(L('研ぎ', 'Polish'), ended ? 1 : prog) +
+      `<div class="stat"><span>${L('研ぎ傷', 'Scratches')}</span><b>${scratches.reduce((a, b) => a + b, 0)}</b></div>`;
   });
 }
 
@@ -1612,12 +1616,12 @@ function stagePolish({ root, scope, state, finish }) {
  * 七、銘切り
  * ============================================================ */
 function stageMei({ root, scope, state, finish }) {
-  const ui = stageLayout(root, '刀工名と刀の名を刻め');
+  const ui = stageLayout(root, L('刀工名と刀の名を刻め', 'Inscribe your name and the sword’s name'));
   const form = el('div', 'mei-form');
   form.innerHTML = `
-    <label>刀工名<input id="mei-smith" maxlength="8" placeholder="例：正宗" autocomplete="off"></label>
-    <label>刀の号（名前）<input id="mei-name" maxlength="10" placeholder="例：月影" autocomplete="off"></label>
-    <p class="note">空欄の場合、刀工名は「無銘」となる。</p>`;
+    <label>${L('刀工名', 'Swordsmith')}<input id="mei-smith" maxlength="${EN ? 14 : 8}" placeholder="${L('例：正宗', 'e.g. Masamune')}" autocomplete="off"></label>
+    <label>${L('刀の号（名前）', 'Sword name')}<input id="mei-name" maxlength="${EN ? 18 : 10}" placeholder="${L('例：月影', 'e.g. Moonshadow')}" autocomplete="off"></label>
+    <p class="note">${L('空欄の場合、刀工名は「無銘」となる。', 'Leave blank for an unsigned (mumei) blade.')}</p>`;
   const nakago = el('div', 'nakago-view');
   const text = el('div', 'nakago-text');
   nakago.append(text);
@@ -1625,7 +1629,7 @@ function stageMei({ root, scope, state, finish }) {
   const smithI = form.querySelector('#mei-smith');
   const nameI = form.querySelector('#mei-name');
   smithI.value = localStorage.getItem('kaji.smith') || '';
-  const go = btn('銘を切る', 'primary', () => carve());
+  const go = btn(L('銘を切る', 'Carve'), 'primary', () => carve());
   ui.controls.append(go);
   let ended = false;
   const preview = () => { text.textContent = smithI.value.trim() ? `${smithI.value.trim()}作` : '無銘'; };
@@ -1650,7 +1654,7 @@ function stageMei({ root, scope, state, finish }) {
     const chars = [...omote].map(ch => [o, ch]).concat([...ura].map(ch => [u, ch]));
     let k = 0;
     const step = () => {
-      if (k >= chars.length) { scope.timeout(() => finish(null, `銘「${omote}」${ura ? '、裏に「' + ura + '」' : ''}を切った。`), 700); return; }
+      if (k >= chars.length) { scope.timeout(() => finish(null, L(`銘「${omote}」${ura ? '、裏に「' + ura + '」' : ''}を切った。`, `Inscribed “${omote}”${ura ? ' and the date “' + ura + '” on the reverse' : ''}.`)), 700); return; }
       const [target, ch] = chars[k++];
       const s = el('span', 'chiseled', ch);
       target.append(s);
@@ -1663,18 +1667,25 @@ function stageMei({ root, scope, state, finish }) {
 }
 
 const STAGES = [
-  { id: 'forge', how: '鋼を真っ赤に沸かし、打って不純物を出し、折り返す。', ctrl: '長押しで加熱 → 輪が閉じたら打つ', no: '一', title: '積み沸かし・折り返し鍛錬', yomi: 'つみわかし・おりかえしたんれん', run: stageForge,
-    intro: '日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。この玉鋼を小さく割って積み重ね、火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。<br>大鎚を振るう<strong>向こう槌</strong>は、師匠（横座）の小槌が示す場所と拍子に合わせて打つ。' },
-  { id: 'tsukuri', how: '硬い皮鉄で、柔らかい心鉄を包む。', ctrl: '中央に来たら落とす', no: '二', title: '造り込み', yomi: 'つくりこみ', run: stageTsukuri,
-    intro: '鍛えた硬い<strong>皮鉄</strong>と、炭素の少ない柔らかい<strong>心鉄</strong>を組み合わせる。甲伏せ・本三枚などの方法があり、皮鉄で心鉄を包んで<strong>沸かし付け</strong>、一本の鋼にする。「折れず、曲がらず、よく切れる」日本刀の秘密はこの組み合わせにある。' },
-  { id: 'shape', how: '叩いて刀の形に整える。', ctrl: '盛り上がりをタップ。冷えたら熱し直す', no: '三', title: '素延べ・火造り', yomi: 'すのべ・ひづくり', run: stageShape,
-    intro: '造り込んだ鋼を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。' },
-  { id: 'clay', how: '刀身に土を塗り、刃文の線を描く。', ctrl: '刀身をなぞる', no: '四', title: '土置き', yomi: 'つちおき', run: stageClay,
-    intro: '粘土・炭の粉・砥石の粉を混ぜた<strong>焼刃土</strong>を刀身に塗る。刃側は薄く、棟側は厚く置くことで、焼入れの冷え方に差が生まれ、硬い刃と粘り強い地、そして<strong>刃文</strong>が生まれる。' },
-  { id: 'quench', how: '熱した刀を水に入れ、刃を硬くする。', ctrl: '「月の出の色」でタップ', no: '五', title: '焼入れ', yomi: 'やきいれ', run: stageQuench,
-    intro: '刀鍛冶の最も緊張する瞬間。火の色を見極めるため鍛冶場を暗くし、刀身を均一に熱して一気に水へ入れる。急冷で刃が硬化し、日本刀特有の<strong>反り</strong>が生まれる。' },
-  { id: 'polish', how: '砥石で研ぎ、刃文を浮かび上がらせる。', ctrl: '一定の速さで左右にこする', no: '六', title: '研ぎ', yomi: 'とぎ', run: stagePolish,
-    intro: '鍛冶押しを終えた刀は<strong>研師</strong>の手に渡る。荒砥から仕上砥まで十数種の砥石を使い分け、刀の姿を整え、地鉄の肌と刃文の美しさを引き出していく。' },
-  { id: 'mei', how: '茎に名を刻んで完成。', ctrl: '名前を入力', no: '七', title: '銘切り', yomi: 'めいきり', run: stageMei,
-    intro: '茎に鑢目をかけ、<strong>鏨</strong>で刀工の名（銘）と年紀を刻む。銘は刀匠がその出来に責任を持つ証である。' }
+  { id: 'forge', how: L('鋼を真っ赤に沸かし、打って不純物を出し、折り返す。', 'Forge, strike out the slag, and fold.'), ctrl: L('長押しで加熱 → 輪が閉じたら打つ', 'Hold to heat → strike as the ring closes'), no: '一', title: L('積み沸かし・折り返し鍛錬', 'Forging & Folding'), yomi: L('つみわかし・おりかえしたんれん', 'Tsumi-wakashi · Orikaeshi-tanren'), run: stageForge,
+    intro: L('日本刀の材料は、砂鉄と木炭から「たたら製鉄」で作られる<strong>玉鋼</strong>。この玉鋼を小さく割って積み重ね、火床で<strong>沸かし</strong>、一つの塊にする。これを鎚で打ち延ばしては折り返す<strong>鍛錬</strong>を十数回繰り返し、不純物を火花として叩き出し、炭素量を整える。こうして刀の外側を覆う硬い<strong>皮鉄</strong>ができる。15回折り返せば層は3万を超える。<br>大鎚を振るう<strong>向こう槌</strong>は、師匠（横座）の小槌が示す場所と拍子に合わせて打つ。',
+      'A katana begins with <strong>tamahagane</strong>, steel smelted from iron sand and charcoal. It is broken up, stacked, and <strong>heated to welding temperature</strong>. The smith then hammers it out and folds it again and again, driving out impurities as sparks and evening out the carbon. This becomes the hard <strong>skin steel</strong>. Fifteen folds make over 30,000 layers.<br>The striker swings the big hammer where — and when — the master taps with his small hammer.') },
+  { id: 'tsukuri', how: L('硬い皮鉄で、柔らかい心鉄を包む。', 'Wrap soft core steel in hard skin steel.'), ctrl: L('中央に来たら落とす', 'Drop it at the center'), no: '二', title: L('造り込み', 'Lamination'), yomi: L('つくりこみ', 'Tsukurikomi'), run: stageTsukuri,
+    intro: L('鍛えた硬い<strong>皮鉄</strong>と、炭素の少ない柔らかい<strong>心鉄</strong>を組み合わせる。甲伏せ・本三枚などの方法があり、皮鉄で心鉄を包んで<strong>沸かし付け</strong>、一本の鋼にする。「折れず、曲がらず、よく切れる」日本刀の秘密はこの組み合わせにある。',
+      'Hard <strong>skin steel</strong> is combined with soft, low-carbon <strong>core steel</strong>, then <strong>forge-welded</strong> into one bar. This combination is the secret of a katana that “neither breaks nor bends, and cuts superbly.”') },
+  { id: 'shape', how: L('叩いて刀の形に整える。', 'Hammer it into the shape of a sword.'), ctrl: L('盛り上がりをタップ。冷えたら熱し直す', 'Tap the high spots; reheat when cool'), no: '三', title: L('素延べ・火造り', 'Drawing Out & Shaping'), yomi: L('すのべ・ひづくり', 'Sunobe · Hizukuri'), run: stageShape,
+    intro: L('造り込んだ鋼を細長く打ち延ばす<strong>素延べ</strong>。さらに小槌で棟・鎬・刃を打ち出し、切先を作って刀の姿にする<strong>火造り</strong>。刀の姿はここでほぼ決まる。',
+      'The bar is drawn out long and thin (<strong>sunobe</strong>), then the spine, ridge and edge are hammered in and the tip formed (<strong>hizukuri</strong>). The sword’s shape is mostly decided here.') },
+  { id: 'clay', how: L('刀身に土を塗り、刃文の線を描く。', 'Coat the blade in clay and draw the hamon.'), ctrl: L('刀身をなぞる', 'Trace along the blade'), no: '四', title: L('土置き', 'Clay Coating'), yomi: L('つちおき', 'Tsuchioki'), run: stageClay,
+    intro: L('粘土・炭の粉・砥石の粉を混ぜた<strong>焼刃土</strong>を刀身に塗る。刃側は薄く、棟側は厚く置くことで、焼入れの冷え方に差が生まれ、硬い刃と粘り強い地、そして<strong>刃文</strong>が生まれる。',
+      'A clay mix is spread on the blade — thin on the edge, thick on the spine. This makes the edge cool faster when quenched, creating a hard edge, a resilient body, and the <strong>hamon</strong> (temper line).') },
+  { id: 'quench', how: L('熱した刀を水に入れ、刃を硬くする。', 'Plunge the hot blade into water to harden it.'), ctrl: L('「月の出の色」でタップ', 'Tap at the “rising-moon” color'), no: '五', title: L('焼入れ', 'Quenching'), yomi: L('やきいれ', 'Yaki-ire'), run: stageQuench,
+    intro: L('刀鍛冶の最も緊張する瞬間。火の色を見極めるため鍛冶場を暗くし、刀身を均一に熱して一気に水へ入れる。急冷で刃が硬化し、日本刀特有の<strong>反り</strong>が生まれる。',
+      'The most tense moment for a swordsmith. The forge is darkened to judge the glow, and the blade is plunged into water. The rapid cooling hardens the edge and creates the katana’s signature <strong>curve</strong>.') },
+  { id: 'polish', how: L('砥石で研ぎ、刃文を浮かび上がらせる。', 'Polish to bring out the hamon.'), ctrl: L('一定の速さで左右にこする', 'Rub left and right at a steady speed'), no: '六', title: L('研ぎ', 'Polishing'), yomi: L('とぎ', 'Togi'), run: stagePolish,
+    intro: L('鍛冶押しを終えた刀は<strong>研師</strong>の手に渡る。荒砥から仕上砥まで十数種の砥石を使い分け、刀の姿を整え、地鉄の肌と刃文の美しさを引き出していく。',
+      'The blade goes to a <strong>polisher</strong>, who works through a series of stones from coarse to fine, refining the shape and revealing the beauty of the steel grain and hamon.') },
+  { id: 'mei', how: L('茎に名を刻んで完成。', 'Carve your name on the tang to finish.'), ctrl: L('名前を入力', 'Enter the names'), no: '七', title: L('銘切り', 'Signing'), yomi: L('めいきり', 'Mei-kiri'), run: stageMei,
+    intro: L('茎に鑢目をかけ、<strong>鏨</strong>で刀工の名（銘）と年紀を刻む。銘は刀匠がその出来に責任を持つ証である。',
+      'The smith files the tang and uses a <strong>chisel</strong> to carve his name (mei) and the date — a pledge of responsibility for the work.') }
 ];

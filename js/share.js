@@ -4,7 +4,9 @@ const Share = (() => {
   const gameUrl = () => location.origin + location.pathname;
 
   function text(rec) {
-    return `刀鍛冶で日本刀を一振り打った！\n号「${rec.name}」　${rec.rank}（総合${rec.total}）\n切れ味${rec.sharp}・強靭さ${rec.tough}・美しさ${rec.beauty}\n#刀鍛冶 #日本刀づくり`;
+    return EN
+      ? `I forged a katana in Katana Kaji!\n“${term(rec.name)}” — ${term(rec.rank)} (Total ${rec.total})\nSharpness ${rec.sharp} · Toughness ${rec.tough} · Beauty ${rec.beauty}\n#KatanaKaji #katana`
+      : `刀鍛冶で日本刀を一振り打った！\n号「${rec.name}」　${rec.rank}（総合${rec.total}）\n切れ味${rec.sharp}・強靭さ${rec.tough}・美しさ${rec.beauty}\n#刀鍛冶 #日本刀づくり`;
   }
 
   /* シェア用の画像 */
@@ -20,11 +22,11 @@ const Share = (() => {
     const F = '"Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif';
     g.textAlign = 'left';
     g.fillStyle = '#d2ae63'; g.font = `600 26px ${F}`;
-    g.fillText('刀鍛冶 ― 日本刀づくり', 64, 84);
+    g.fillText(L('刀鍛冶 ― 日本刀づくり', '刀鍛冶  KATANA KAJI'), 64, 84);
     g.fillStyle = '#f3ead8'; g.font = `800 64px ${F}`;
-    g.fillText(`号「${rec.name}」`, 64, 168);
+    g.fillText(L(`号「${rec.name}」`, `“${term(rec.name)}”`), 64, 168);
     g.fillStyle = '#b8a890'; g.font = `400 26px ${F}`;
-    g.fillText(`銘　${rec.smith ? rec.smith + '作' : '無銘'}`, 68, 214);
+    g.fillText(L(`銘　${rec.smith ? rec.smith + '作' : '無銘'}`, rec.smith ? `made by ${rec.smith}` : 'unsigned'), 68, 214);
     Sword.draw(g, { ...swordOpt, x: 250, y: 330, length: 860, width: 74, sori: (rec.sori ?? 16) * 860 / 760, bg: '#120c08' });
     // 位の印
     g.save();
@@ -32,11 +34,12 @@ const Share = (() => {
     g.strokeStyle = '#d0472f'; g.lineWidth = 5; g.strokeRect(-110, -80, 220, 160);
     g.lineWidth = 2; g.strokeRect(-100, -70, 200, 140);
     g.fillStyle = '#e0563c'; g.textAlign = 'center';
-    g.font = `800 ${rec.rank.length > 4 ? 34 : 42}px ${F}`; g.fillText(rec.rank, 0, 2);
-    g.font = `400 24px ${F}`; g.fillStyle = '#f3ead8'; g.fillText(`総合 ${rec.total}`, 0, 48);
+    const rk = term(rec.rank);
+    g.font = `800 ${EN ? (rk.length > 12 ? 24 : 28) : rec.rank.length > 4 ? 34 : 42}px ${F}`; g.fillText(rk, 0, 2);
+    g.font = `400 24px ${F}`; g.fillStyle = '#f3ead8'; g.fillText(`${L('総合', 'Total')} ${rec.total}`, 0, 48);
     g.restore();
     // 能力
-    const stats = [['切れ味', rec.sharp], ['強靭さ', rec.tough], ['美しさ', rec.beauty]];
+    const stats = [[L('切れ味', 'Sharpness'), rec.sharp], [L('強靭さ', 'Toughness'), rec.tough], [L('美しさ', 'Beauty'), rec.beauty]];
     stats.forEach(([label, v], i) => {
       const x = 64 + i * 370, y = 500;
       g.textAlign = 'left'; g.fillStyle = '#b8a890'; g.font = `400 26px ${F}`;
@@ -65,7 +68,7 @@ const Share = (() => {
   /* 結果画面に置くシェアボタン群 */
   function buttons(rec, swordOpt) {
     const box = el('div', 'share');
-    box.append(el('p', 'share-label', 'この一振りを披露する'));
+    box.append(el('p', 'share-label', L('この一振りを披露する', 'SHOW OFF YOUR SWORD')));
     const row = el('div', 'share-row');
     const msg = text(rec);
     const url = gameUrl();
@@ -73,23 +76,23 @@ const Share = (() => {
     const getCard = () => (cardCanvas ||= card(rec, swordOpt));
 
     if (navigator.share) {
-      row.append(btn('シェアする', 'primary share-native', async () => {
+      row.append(btn(L('シェアする', 'Share'), 'primary share-native', async () => {
         try {
           const blob = await toBlob(getCard());
           const file = new File([blob], 'katana.png', { type: 'image/png' });
-          const data = { title: '刀鍛冶 ― 日本刀づくり', text: msg, url };
+          const data = { title: L('刀鍛冶 ― 日本刀づくり', 'Katana Kaji — Forge a Japanese Sword'), text: msg, url };
           if (navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file];
           await navigator.share(data);
         } catch (e) { /* キャンセルは無視 */ }
       }));
     }
-    const x = el('a', 'btn share-x', '𝕏 でポスト');
+    const x = el('a', 'btn share-x', L('𝕏 でポスト', 'Post on 𝕏'));
     x.href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(msg) + '&url=' + encodeURIComponent(url);
     x.target = '_blank'; x.rel = 'noopener';
-    const line = el('a', 'btn share-line', 'LINEで送る');
+    const line = el('a', 'btn share-line', L('LINEで送る', 'Share on LINE'));
     line.href = 'https://social-plugins.line.me/lineit/share?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(msg);
     line.target = '_blank'; line.rel = 'noopener';
-    const save = btn('画像を保存', '', async () => {
+    const save = btn(L('画像を保存', 'Save Image'), '', async () => {
       const blob = await toBlob(getCard());
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -97,9 +100,9 @@ const Share = (() => {
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     });
-    const copy = btn('文章をコピー', '', async () => {
-      try { await navigator.clipboard.writeText(msg + '\n' + url); toast('コピーしました'); }
-      catch (e) { toast('コピーできませんでした'); }
+    const copy = btn(L('文章をコピー', 'Copy Text'), '', async () => {
+      try { await navigator.clipboard.writeText(msg + '\n' + url); toast(L('コピーしました', 'Copied')); }
+      catch (e) { toast(L('コピーできませんでした', 'Could not copy')); }
     });
     row.append(x, line, save, copy);
     box.append(row);

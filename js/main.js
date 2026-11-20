@@ -40,15 +40,16 @@ function showTitle() {
   const wrap = el('section', 'title-screen');
   const [c, g] = makeCanvas(900, 230, 'title-canvas');
   wrap.innerHTML = `
-    <p class="kicker">日本刀づくり</p>
+    <p class="kicker">${L('日本刀づくり', 'THE ART OF THE JAPANESE SWORD')}</p>
     <h1 class="logo"><span>刀</span><span>鍛</span><span>冶</span></h1>
-    <p class="lead">玉鋼を鍛え、組み、焼き、研ぐ。<br>刀匠の七つの工程をたどり、世界に一振りの日本刀を打て。</p>`;
+    ${EN ? '<p class="logo-en">KATANA KAJI</p>' : ''}
+    <p class="lead">${L('玉鋼を鍛え、組み、焼き、研ぐ。<br>刀匠の七つの工程をたどり、世界に一振りの日本刀を打て。', 'Forge, laminate, quench and polish.<br>Follow the seven steps of a master swordsmith and create a one-of-a-kind katana.')}</p>`;
   wrap.append(c);
   const menu = el('div', 'menu');
   menu.append(
-    btn('鍛刀を始める', 'primary big', () => newGame()),
-    btn(`蔵を見る（${loadKura().length}）`, '', () => showKura()),
-    btn('遊び方', '', () => showHowto())
+    btn(L('鍛刀を始める', 'Start Forging'), 'primary big', () => newGame()),
+    btn(L(`蔵を見る（${loadKura().length}）`, `Collection (${loadKura().length})`), '', () => showKura()),
+    btn(L('遊び方', 'How to Play'), '', () => showHowto())
   );
   wrap.append(menu);
   screen.append(wrap);
@@ -82,13 +83,13 @@ function showHowto() {
   clearScreen();
   Music.setMood('calm');
   const wrap = el('section', 'page howto-page');
-  wrap.append(el('h2', '', '遊び方'));
-  wrap.append(el('p', 'howto-lead', '7つの工程で日本刀を打ち、最後に鑑定を受けます。'));
+  wrap.append(el('h2', '', L('遊び方', 'How to Play')));
+  wrap.append(el('p', 'howto-lead', L('7つの工程で日本刀を打ち、最後に鑑定を受けます。', 'Make a katana in 7 steps, then have it appraised.')));
   const list = el('ol', 'howto');
   STAGES.forEach(s => list.append(el('li', '',
-    `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p><p class="ctrl"><span>操作</span>${s.ctrl}</p>`)));
+    `<h3><span class="no">${s.no}</span>${s.title}</h3><p>${s.how}</p><p class="ctrl"><span>${L('操作', 'Control')}</span>${s.ctrl}</p>`)));
   wrap.append(list);
-  wrap.append(btn('戻る', 'big', () => showTitle()));
+  wrap.append(btn(L('戻る', 'Back'), 'big', () => showTitle()));
   screen.append(wrap);
 }
 
@@ -107,11 +108,11 @@ function runStage(i) {
   const s = STAGES[i];
   const card = el('section', 'intro');
   card.innerHTML = `
-    <p class="stage-no">第${s.no}の工程</p>
+    <p class="stage-no">${L(`第${s.no}の工程`, `STEP ${STAGES.indexOf(s) + 1}`)}</p>
     <h2>${s.title}</h2>
     <p class="yomi">${s.yomi}</p>
     <p class="body">${s.intro}</p>`;
-  const go = btn('始める', 'primary big', () => start());
+  const go = btn(L('始める', 'Begin'), 'primary big', () => start());
   card.append(go);
   screen.append(card);
   go.focus();
@@ -140,11 +141,11 @@ function runStage(i) {
 }
 
 function grade(score) {
-  if (score >= 90) return ['秀', 'g-s'];
-  if (score >= 75) return ['優', 'g-a'];
-  if (score >= 55) return ['良', 'g-b'];
-  if (score >= 35) return ['可', 'g-c'];
-  return ['拙', 'g-d'];
+  if (score >= 90) return [L('秀', 'S'), 'g-s'];
+  if (score >= 75) return [L('優', 'A'), 'g-a'];
+  if (score >= 55) return [L('良', 'B'), 'g-b'];
+  if (score >= 35) return [L('可', 'C'), 'g-c'];
+  return [L('拙', 'D'), 'g-d'];
 }
 
 function showStageResult(i, score, comment) {
@@ -153,11 +154,11 @@ function showStageResult(i, score, comment) {
   const box = el('div', 'result-card');
   const [gr, cls] = score == null ? ['', ''] : grade(score);
   box.innerHTML = `
-    <p class="stage-no">第${s.no}の工程　${s.title}</p>
-    ${score == null ? '<p class="big-mark">了</p>' : `<p class="big-mark ${cls}">${gr}</p><p class="score">${score}<small> / 100</small></p>`}
+    <p class="stage-no">${L(`第${s.no}の工程　${s.title}`, `STEP ${i + 1} · ${s.title}`)}</p>
+    ${score == null ? `<p class="big-mark">${L('了', '✓')}</p>` : `<p class="big-mark ${cls}">${gr}</p><p class="score">${score}<small> / 100</small></p>`}
     <p class="comment">${comment || ''}</p>`;
   const last = i === STAGES.length - 1;
-  const next = btn(last ? '鑑定へ' : '次の工程へ', 'primary', () => {
+  const next = btn(last ? L('鑑定へ', 'Appraisal') : L('次の工程へ', 'Next Step'), 'primary', () => {
     overlay.remove();
     if (last) showAppraisal(); else runStage(i + 1);
   });
@@ -170,12 +171,12 @@ function showStageResult(i, score, comment) {
 
 /* ---------------- 鑑定 ---------------- */
 const RANKS = [
-  [92, '最上大業物', 'さいじょうおおわざもの', '天下に二つとない名刀。後世まで国の宝として伝えられよう。'],
-  [82, '大業物', 'おおわざもの', '名工の手になる一振り。武士が家宝として伝える名刀である。'],
-  [70, '良業物', 'よきわざもの', '切れ味・姿ともに優れた良刀。'],
-  [58, '業物', 'わざもの', '実用に足る、確かな出来の刀。'],
-  [40, '数打物', 'かずうちもの', '並の出来。まだまだ修業が必要だ。'],
-  [0, '鈍刀', 'なまくら', 'これでは大根も切れぬ…。師匠に叱られる出来だ。']
+  [92, '最上大業物', L('さいじょうおおわざもの', 'Supreme masterpiece'), L('天下に二つとない名刀。後世まで国の宝として伝えられよう。', 'A blade without equal under heaven, destined to be a national treasure. ')],
+  [82, '大業物', L('おおわざもの', 'Masterwork'), L('名工の手になる一振り。武士が家宝として伝える名刀である。', 'The work of a master — a sword a samurai family would pass down for generations. ')],
+  [70, '良業物', L('よきわざもの', 'Excellent'), L('切れ味・姿ともに優れた良刀。', 'A fine sword, excellent in both cutting and form. ')],
+  [58, '業物', L('わざもの', 'Good'), L('実用に足る、確かな出来の刀。', 'A solid, battle-worthy blade. ')],
+  [40, '数打物', L('かずうちもの', 'Mass-produced'), L('並の出来。まだまだ修業が必要だ。', 'Ordinary work. Much training remains. ')],
+  [0, '鈍刀', L('なまくら', 'Dull blade'), L('これでは大根も切れぬ…。師匠に叱られる出来だ。', 'This could not even cut a radish… Your master will not be pleased. ')]
 ];
 
 function computeResult(st) {
@@ -193,11 +194,20 @@ function computeResult(st) {
 
 function appraiserWords(st, r) {
   const sc = st.scores;
-  const names = { forge: '鍛錬', tsukuri: '造り込み', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
+  const names = EN ? { forge: 'forging', tsukuri: 'lamination', shape: 'shape', clay: 'clay work', quench: 'quench', polish: 'polish' } : { forge: '鍛錬', tsukuri: '造り込み', shape: '姿', clay: '土置き', quench: '焼入れ', polish: '研ぎ' };
   const ent = Object.entries(sc).filter(([k]) => names[k]);
   ent.sort((a, b) => b[1] - a[1]);
   const best = ent[0], worst = ent[ent.length - 1];
   const parts = [];
+  if (EN) {
+    if (st.crack) parts.push('Sadly, a quench crack runs through the edge — it could never be used in battle. ');
+    parts.push(`The ${names[best[0]]} is especially fine. `);
+    if (worst[1] < 70) parts.push(`The ${names[worst[0]]} leaves room for improvement. `);
+    if (st.method === 'maru') parts.push('Being maru-gitae, it naturally lacks resilience. ');
+    const hn = st.hamonName === '自作' ? 'your own hamon' : `the ${term(st.hamonName)} hamon`;
+    parts.push(`Folded ${st.folds} times, the ${term(st.grainName || '板目肌')} is ${st.folds >= 10 ? 'tight and refined' : 'somewhat coarse'}, and ${hn} is ${(st.hamonStrength ?? 1) > 0.7 ? 'bright and vivid' : 'faint'}.`);
+    return parts.join('');
+  }
   if (st.crack) parts.push('惜しむらくは刃に焼割れがある。これでは実戦には使えぬ。');
   parts.push(`${names[best[0]]}が特に見事である。`);
   if (worst[1] < 70) parts.push(`${names[worst[0]]}にはまだ工夫の余地があろう。`);
@@ -242,7 +252,10 @@ function showAppraisal() {
   const saved = saveKura(list.slice(0, 60));
 
   const wrap = el('section', 'appraisal');
-  wrap.innerHTML = `<p class="kicker">鑑定書</p><h2 class="sword-name">号「${rec.name}」</h2>
+  wrap.innerHTML = EN
+    ? `<p class="kicker">CERTIFICATE OF APPRAISAL</p><h2 class="sword-name">“${term(rec.name)}”</h2>
+    <p class="mei">Signed: ${rec.smith ? 'made by ' + rec.smith : 'unsigned (mumei)'}</p>`
+    : `<p class="kicker">鑑定書</p><h2 class="sword-name">号「${rec.name}」</h2>
     <p class="mei">銘　${rec.smith ? rec.smith + '作' : '無銘'}　${rec.smith ? '／ ' + rec.date : ''}</p>`;
   const [c, g] = makeCanvas(1000, 250, 'sword-canvas');
   wrap.append(c);
@@ -256,25 +269,26 @@ function showAppraisal() {
   });
 
   const body = el('div', 'appraisal-body');
-  const seal = el('div', 'rank-seal', `<span class="rank">${r.rank[1]}</span><span class="yomi">${r.rank[2]}</span><span class="total">総合 ${r.total}</span>`);
+  const seal = el('div', 'rank-seal', `<span class="rank">${term(r.rank[1])}</span><span class="yomi">${r.rank[2]}</span><span class="total">${L('総合', 'Total')} ${r.total}</span>`);
   const stats = el('div', 'stats');
   const bar = (label, v) => `<div class="statbar"><span>${label}</span><i><b style="width:${v}%"></b></i><em>${v}</em></div>`;
-  stats.innerHTML = bar('切れ味', r.sharp) + bar('強靭さ', r.tough) + bar('美しさ', r.beauty);
+  stats.innerHTML = bar(L('切れ味', 'Sharpness'), r.sharp) + bar(L('強靭さ', 'Toughness'), r.tough) + bar(L('美しさ', 'Beauty'), r.beauty);
   const detail = el('dl', 'detail');
+  const [PO, PC] = EN ? [' (', ')'] : ['（', '）'];
   const sc = state.scores;
   detail.innerHTML = `
-    <dt>鍛錬</dt><dd>${sc.forge}（${state.folds}回・${state.grainName || '板目肌'}）</dd>
-    <dt>造り込み</dt><dd>${sc.tsukuri}（${state.methodName}）</dd><dt>火造り</dt><dd>${sc.shape}</dd><dt>土置き</dt><dd>${sc.clay}（${state.hamonName}）</dd>
-    <dt>焼入れ</dt><dd>${sc.quench}（約${state.quenchT}℃）</dd><dt>研ぎ</dt><dd>${sc.polish}</dd>`;
+    <dt>${L('鍛錬', 'Forging')}</dt><dd>${sc.forge}${PO}${L(`${state.folds}回・${state.grainName || '板目肌'}`, `${state.folds} folds, ${term(state.grainName || '板目肌')}`)}${PC}</dd>
+    <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}${PO}${term(state.methodName)}${PC}</dd><dt>${L('火造り', 'Shaping')}</dt><dd>${sc.shape}</dd><dt>${L('土置き', 'Clay')}</dt><dd>${sc.clay}${PO}${term(state.hamonName)}${PC}</dd>
+    <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd><dt>${L('研ぎ', 'Polish')}</dt><dd>${sc.polish}</dd>`;
   stats.append(detail);
   body.append(seal, stats);
   wrap.append(body);
-  wrap.append(el('p', 'verdict', `<strong>鑑定士いわく：</strong>${r.rank[3]}${appraiserWords(state, r)}`));
-  if (!saved) wrap.append(el('p', 'note', '※ ブラウザの設定により、蔵への保存ができませんでした。'));
-  else wrap.append(el('p', 'note', 'この刀は蔵に納められた。'));
+  wrap.append(el('p', 'verdict', `<strong>${L('鑑定士いわく：', 'The appraiser says: ')}</strong>${r.rank[3]}${appraiserWords(state, r)}`));
+  if (!saved) wrap.append(el('p', 'note', L('※ ブラウザの設定により、蔵への保存ができませんでした。', '* Your browser settings prevented saving to the collection.')));
+  else wrap.append(el('p', 'note', L('この刀は蔵に納められた。', 'This sword has been added to your collection.')));
   wrap.append(Share.buttons(rec, swordOpt));
   const menu = el('div', 'menu');
-  menu.append(btn('もう一振り打つ', 'primary', () => newGame()), btn('蔵を見る', '', () => showKura()), btn('タイトルへ', '', () => showTitle()));
+  menu.append(btn(L('もう一振り打つ', 'Forge Another'), 'primary', () => newGame()), btn(L('蔵を見る', 'Collection'), '', () => showKura()), btn(L('タイトルへ', 'Title'), '', () => showTitle()));
   wrap.append(menu);
   screen.append(wrap);
   Sound.gong();
@@ -286,9 +300,9 @@ function showKura() {
   Music.setMood('calm');
   renderHud(-1);
   const wrap = el('section', 'page');
-  wrap.append(el('h2', '', '蔵'));
+  wrap.append(el('h2', '', L('蔵', 'Collection')));
   const list = loadKura();
-  if (!list.length) wrap.append(el('p', 'note', 'まだ一振りも納められていない。'));
+  if (!list.length) wrap.append(el('p', 'note', L('まだ一振りも納められていない。', 'No swords yet.')));
   const grid = el('div', 'kura');
   list.forEach((rec, idx) => {
     const item = el('article', 'kura-item');
@@ -296,18 +310,20 @@ function showKura() {
     Sword.draw(g, { ...swordOptions(rec, 160, 66, 450, 36), bg: '#17120e' });
     item.append(c);
     item.append(el('div', 'kura-info', `
-      <h3>「${rec.name}」<small>${rec.smith ? rec.smith + '作' : '無銘'}</small></h3>
-      <p><span class="rank-tag">${rec.rank}</span> 総合 ${rec.total}　切れ味 ${rec.sharp}・強靭さ ${rec.tough}・美しさ ${rec.beauty}</p>
-      <p class="small">${rec.date || ''}　${rec.method ? rec.method + '・' : ''}${rec.hamonName || ''}の刃文・${rec.folds}回鍛錬${rec.crack ? '・<span class="bad">焼割れ</span>' : ''}</p>`));
-    const del = btn('手放す', 'small ghost', () => {
-      if (!confirm(`「${rec.name}」を蔵から手放しますか？`)) return;
+      <h3>${L(`「${rec.name}」`, `“${term(rec.name)}”`)}<small>${rec.smith ? L(rec.smith + '作', 'by ' + rec.smith) : L('無銘', 'unsigned')}</small></h3>
+      <p><span class="rank-tag">${term(rec.rank)}</span> ${L('総合', 'Total')} ${rec.total}　${L(`切れ味 ${rec.sharp}・強靭さ ${rec.tough}・美しさ ${rec.beauty}`, `Sharp ${rec.sharp} · Tough ${rec.tough} · Beauty ${rec.beauty}`)}</p>
+      <p class="small">${EN
+        ? `${rec.method ? term(rec.method) + ' · ' : ''}${term(rec.hamonName) || ''} hamon · ${rec.folds} folds${rec.crack ? ' · <span class="bad">quench crack</span>' : ''}`
+        : `${rec.date || ''}　${rec.method ? rec.method + '・' : ''}${rec.hamonName || ''}の刃文・${rec.folds}回鍛錬${rec.crack ? '・<span class="bad">焼割れ</span>' : ''}`}</p>`));
+    const del = btn(L('手放す', 'Remove'), 'small ghost', () => {
+      if (!confirm(L(`「${rec.name}」を蔵から手放しますか？`, `Remove “${term(rec.name)}” from your collection?`))) return;
       const l = loadKura(); l.splice(idx, 1); saveKura(l); showKura();
     });
     item.append(del);
     grid.append(item);
   });
   wrap.append(grid);
-  wrap.append(btn('戻る', '', () => showTitle()));
+  wrap.append(btn(L('戻る', 'Back'), '', () => showTitle()));
   screen.append(wrap);
 }
 
@@ -315,18 +331,26 @@ function showKura() {
 document.getElementById('sound').addEventListener('click', e => {
   Sound.init();
   const on = Sound.toggle();
-  e.currentTarget.textContent = on ? '音：入' : '音：切';
+  e.currentTarget.textContent = on ? L('音：入', 'SFX: On') : L('音：切', 'SFX: Off');
 });
 document.getElementById('home').addEventListener('click', () => {
-  if (state && !confirm('作刀を中断してタイトルに戻りますか？')) return;
+  if (state && !confirm(L('作刀を中断してタイトルに戻りますか？', 'Abandon this sword and return to the title?'))) return;
   state = null;
   showTitle();
 });
+document.getElementById('sound').textContent = L('音：入', 'SFX: On');
+document.getElementById('home').textContent = L('刀鍛冶', 'Katana Kaji');
+const langBtn = document.getElementById('lang');
+langBtn.textContent = EN ? '日本語' : 'English';
+langBtn.addEventListener('click', () => {
+  if (state && !confirm(L('言語を切り替えると作刀は中断されます。よろしいですか？', 'Switching language will abandon the current sword. Continue?'))) return;
+  setLang(EN ? 'ja' : 'en');
+});
 const bgmBtn = document.getElementById('bgm');
-bgmBtn.textContent = Music.enabled ? 'BGM：入' : 'BGM：切';
+bgmBtn.textContent = Music.enabled ? L('BGM：入', 'BGM: On') : L('BGM：切', 'BGM: Off');
 bgmBtn.addEventListener('click', () => {
   Sound.init();
-  bgmBtn.textContent = Music.toggle() ? 'BGM：入' : 'BGM：切';
+  bgmBtn.textContent = Music.toggle() ? L('BGM：入', 'BGM: On') : L('BGM：切', 'BGM: Off');
 });
 /* ブラウザの自動再生制限のため、最初の操作で音を開始する */
 const firstGesture = () => {
