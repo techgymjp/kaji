@@ -10,7 +10,6 @@ const Music = (() => {
   let nextKoto = 0, nextFlute = 0, nextDrum = 0, drumStep = 0;
   let drone = null;
   let fluteDeg = 2;
-  let groove = null;            // 譜面と同じ拍で太鼓を刻む { t0, beat, next }
   try { enabled = localStorage.getItem('kaji.bgm') !== 'off'; } catch (e) { /* 既定は入 */ }
 
   const ROOT = 146.83;                 // D3
@@ -208,20 +207,6 @@ const Music = (() => {
         nextFlute = t + between(M.flute);
       }
     }
-    // 譜面に同期した太鼓：1拍目に強く、3拍目に弱く、2・4拍目に縁を軽く
-    if (groove) {
-      while (groove.next < ahead) {
-        const t = groove.next;
-        const b = Math.round((t - groove.t0) / groove.beat);
-        if (t >= now - 0.02 && b >= 0) {
-          const pos = ((b % 4) + 4) % 4;
-          if (pos === 0) taiko(t, 0.75);
-          else if (pos === 2) taiko(t, 0.35, 1.1);
-          else kaRim(t);
-        }
-        groove.next += groove.beat;
-      }
-    }
     // 太鼓
     if (M.drum) {
       while (nextDrum < ahead) {
@@ -275,13 +260,19 @@ const Music = (() => {
       nextDrum = Math.min(nextDrum, now + 0.8);
       applyMood();
     },
-    /* 譜面の拍に合わせて太鼓を刻む（t0：1小節目の頭のオーディオ時刻） */
-    groove(t0, beat) {
+    /* 作刀中の曲調に切り替える（太鼓はゲーム側が drumAt で拍に合わせて鳴らす） */
+    groove() {
       if (!started) this.start();
-      groove = { t0, beat, next: t0 };
       this.setMood('groove');
     },
-    grooveOff() { groove = null; },
+    /* オーディオ時刻 t に太鼓を一打。pos：小節内の拍（0〜3） */
+    drumAt(t, pos) {
+      if (!ac || !bus || !enabled || hidden) return;
+      if (pos === 0) taiko(t, 0.75);
+      else if (pos === 2) taiko(t, 0.35, 1.1);
+      else kaRim(t);
+    },
+    grooveOff() { /* 曲調は呼び出し側で切り替える */ },
     get enabled() { return enabled; },
     toggle() {
       enabled = !enabled;

@@ -168,7 +168,16 @@ function stageKatana({ root, scope, state, finish, section }) {
   let masterFx = 0, masterX = CX, masterY = AY, hammerFx = null;
   let lastJudge = null;        // レーン上の判定表示 { text, t, q }
   let yk = null;
-  const songT = () => (started ? Sound.now() - t0 : -1);
+  /* ゲームの時計は画面側（performance.now）。音はこの時計に合わせて予約して鳴らす。
+     音の仕組みが一時停止していても、譜面と師匠は止まらない */
+  const pnow = () => performance.now() / 1000;
+  const songT = () => (started ? pnow() - t0 : -1);
+  const audioAt = st => {
+    const ac = Sound.ctx;
+    return ac ? ac.currentTime + (t0 + st - pnow()) - (ac.outputLatency || 0) : 0;
+  };
+  const audioOK = () => Sound.ctx && Sound.ctx.state === 'running';
+  let drumBeat = 0, errMsg = '';
 
   const say = (s, d = 1.0) => { msg = s; msgT = d; };
   const avg = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
@@ -188,9 +197,10 @@ function stageKatana({ root, scope, state, finish, section }) {
 
   function begin() {
     Sound.init();
-    t0 = Sound.now() + 0.8;
+    if (Sound.ctx && Sound.ctx.state !== 'running') { try { Sound.ctx.resume(); } catch (e) { /* 無視 */ } }
+    t0 = pnow() + 0.8;
     started = true;
-    if (Sound.ctx) Music.groove(t0 + (Sound.ctx.outputLatency || 0), BEAT);
+    Music.groove();
   }
   begin();
   if (/[?&]debug\b/.test(location.search)) window.__katana = { pNotes, songT, BEAT };
@@ -624,8 +634,15 @@ function stageKatana({ root, scope, state, finish, section }) {
     g.restore();
   }
 
-  // ---------- ループ
+  // ---------- ループ（万一の例外でも止まらない）
   scope.loop(dt => {
+    try { frame(dt); } catch (e) {
+      if (!errMsg) console.error(e);
+      errMsg = String(e && e.message || e);
+      ui.status.innerHTML = `<div class="stat"><small>error: ${errMsg.replace(/</g, '&lt;')}</small></div>`;
+    }
+  });
+  function frame(dt) {
     time += dt;
     msgT -= dt;
     bannerT -= dt;
@@ -636,6 +653,11 @@ function stageKatana({ root, scope, state, finish, section }) {
     const now = songT();
 
     if (mode === 'play') {
+      // BGM の太鼓を拍に合わせて予約（1拍目に強く、3拍目に弱く、2・4拍目は縁）
+      while (drumBeat * BEAT < now + 0.25) {
+        if (drumBeat * BEAT > now - 0.05 && audioOK()) Music.drumAt(audioAt(drumBeat * BEAT), drumBeat % 4);
+        drumBeat++;
+      }
       // 区切り・沸かし直し・心鉄入れ
       for (const ev of events) {
         if (ev.done || now < ev.t) continue;
@@ -655,7 +677,7 @@ function stageKatana({ root, scope, state, finish, section }) {
         if (n.who !== 'M') continue;
         if (!n.scheduled && n.t - now < 0.25) {
           n.scheduled = true;
-          if (n.t > now - 0.05) Sound.tickAt(t0 + n.t + (Sound.ctx ? Sound.ctx.outputLatency || 0 : 0));
+          if (n.t > now - 0.05 && audioOK()) Sound.tickAt(audioAt(n.t));
         }
         if (!n.shown && now >= n.t) {
           n.shown = true;
@@ -716,7 +738,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       `<div class="stat"><span>${view.no}</span><b>${view.title}</b></div>` +
       (SECTIONS[curSec].id === 'kawa' ? `<div class="stat"><span>${L('折り返し', 'Folds')}</span><b>${folds}/${KAWA_FOLDS}</b></div>` : '') +
       `<div class="stat"><span>${L('連打', 'Combo')}</span><b>${combo}</b></div>`;
-  });
+  }
 }
 
 

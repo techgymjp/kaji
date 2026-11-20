@@ -386,15 +386,16 @@ bgmBtn.addEventListener('click', () => {
   Sound.init();
   bgmBtn.textContent = Music.toggle() ? L('BGM：入', 'BGM: On') : L('BGM：切', 'BGM: Off');
 });
-/* ブラウザの自動再生制限のため、最初の操作で音を開始する */
-const firstGesture = () => {
+/* ブラウザの自動再生制限のため、操作のたびに音の再開を試みる。
+   スマホでは「指を離した瞬間」やクリックでないと再生が許可されないことがある */
+const unlockAudio = () => {
   Sound.init();
   if (Music.enabled) Music.start();
-  window.removeEventListener('pointerdown', firstGesture);
-  window.removeEventListener('keydown', firstGesture);
+  if (Sound.ctx && Sound.ctx.state === 'running') {
+    ['pointerup', 'touchend', 'click', 'keydown'].forEach(ev => window.removeEventListener(ev, unlockAudio, true));
+  }
 };
-window.addEventListener('pointerdown', firstGesture);
-window.addEventListener('keydown', firstGesture);
+['pointerup', 'touchend', 'click', 'keydown'].forEach(ev => window.addEventListener(ev, unlockAudio, true));
 
 /* 背景の火の粉 */
 (function embers() {
