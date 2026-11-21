@@ -111,8 +111,8 @@ function stageKatana({ root, scope, state, finish, section }) {
   const CX = 570, AY = H * 0.72 - 50;
   const KAWA_FOLDS = 5, KAWA_LEN = 150, KAWA_AREA = KAWA_LEN * 36;
   const NOB_X = 70, NOB_MAX = 700;
-  const BEAT = 60 / 108;       // 最初のテンポ（進むほど速くなる）
-  const WIN = { perfect: 0.045, good: 0.085, ok: 0.13 };
+  const BEAT = 60 / 100;       // 最初のテンポ（進むほど少しずつ速くなる）
+  const WIN = { perfect: 0.06, good: 0.11, ok: 0.18 };
 
   let T = 1320;
   let purity = 0.44, carbon = 0.88 + Math.random() * 0.04;
@@ -136,13 +136,14 @@ function stageKatana({ root, scope, state, finish, section }) {
   const setBpm = bpm => { curBeat = 60 / bpm; };
   function nextBar() { barBeat[bar] = curBeat; barStart[bar + 1] = barStart[bar] + curBeat * 4; bar++; }
   const at = sl => barStart[bar] + sl * curBeat / 4;       // 16分音符の位置（0〜15）
-  const POOLS = {              // 16分音符の位置（0〜15）
-    easy: [[0, 4, 8, 12]],
-    mid: [[0, 4, 6, 8, 12], [0, 2, 4, 8, 12], [0, 4, 8, 10, 12], [0, 4, 6, 8, 10, 12], [0, 3, 4, 8, 12], [0, 6, 8, 12]],
-    hard: [[0, 2, 4, 6, 8, 12], [0, 3, 6, 8, 12], [0, 4, 6, 7, 8, 12], [0, 2, 3, 4, 8, 10, 12], [0, 3, 6, 8, 11, 12], [0, 4, 5, 6, 8, 12, 14]],
-    expert: [[0, 1, 2, 4, 6, 8, 10, 11, 12], [0, 3, 6, 9, 12, 14], [0, 2, 3, 5, 6, 8, 11, 12], [0, 3, 4, 7, 8, 11, 12, 14], [0, 1, 4, 6, 7, 10, 12, 13]]
+  // リズムの型（16分音符の位置 0〜15。易しくするため、4分音符と8分音符＝偶数の位置だけを使う）
+  // 一覧は docs/RHYTHM.md
+  const POOLS = {
+    easy: [[0, 4, 8, 12], [0, 4, 8]],
+    mid: [[0, 4, 6, 8, 12], [0, 2, 4, 8, 12], [0, 4, 8, 10, 12], [0, 4, 8, 12, 14]],
+    hard: [[0, 2, 4, 6, 8, 12], [0, 4, 6, 8, 10, 12], [0, 2, 4, 8, 10, 12], [0, 6, 8, 12]]
   };
-  const FOLD_POOL = [[0, 4, 8, 12], [0, 6, 8, 12], [0, 4, 10, 12], [0, 3, 6, 8], [0, 2, 8, 10], [0, 6, 10, 12], [0, 3, 8, 11]];
+  const FOLD_POOL = [[0, 4, 8, 12], [0, 6, 8, 12], [0, 4, 10, 12], [0, 2, 8, 12]];
   const pick = a => a[Math.floor(Math.random() * a.length)];
   function callResponse(slots, steps) {
     callBars.add(bar);
@@ -156,33 +157,33 @@ function stageKatana({ root, scope, state, finish, section }) {
   const spread = (s, k, slots, from, to, extra = {}) =>
     slots.map((_, i) => ({ s, k, p: from + (to - from) * i / Math.max(1, slots.length - 1), n: slots.length, ...extra }));
 
-  setBpm(108);
+  setBpm(100);
   rest('section', { id: 'kawa' });
   for (let f = 0; f < KAWA_FOLDS; f++) {
-    setBpm(108 + f * 4);
-    const sp = pick(POOLS[f < 1 ? 'easy' : f < 2 ? 'mid' : f < 4 ? 'hard' : 'expert']);
+    setBpm(100 + f * 2);
+    const sp = pick(POOLS[f < 2 ? 'easy' : f < 4 ? 'mid' : 'hard']);
     callResponse(sp, spread('kawa', 'spread', sp, 0.12, 0.92));
     const fp = f < 1 ? FOLD_POOL[0] : pick(FOLD_POOL);
     callResponse(fp, [{ s: 'kawa', k: 'notch' }, { s: 'kawa', k: 'fold' }, { s: 'kawa', k: 'weld', p: 0.3 }, { s: 'kawa', k: 'weld', p: 0.7, last: true }]);
     if (f === 1 || f === 3) rest('reheat');
   }
-  setBpm(120);
+  setBpm(108);
   rest('section', { id: 'shin' });
-  { const p = pick(POOLS.hard); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
+  { const p = pick(POOLS.mid); callResponse(p, spread('shin', 'pack', p, 0.15, 0.85)); }
   rest('section', { id: 'tsukuri' });
-  callResponse(pick([[0, 8], [0, 6], [0, 10]]), [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
+  callResponse(pick([[0, 8], [0, 4]]), [{ s: 'tsukuri', k: 'bend', p: -1 }, { s: 'tsukuri', k: 'bend', p: 1 }]);
   rest('insert');
-  callResponse(pick([[0, 4, 8, 12], [0, 6, 8, 12], [0, 3, 8, 12], [0, 4, 6, 12]]),
+  callResponse(pick([[0, 4, 8, 12], [0, 4, 6, 12], [0, 2, 8, 12]]),
     [{ s: 'tsukuri', k: 'close', p: -1 }, { s: 'tsukuri', k: 'close', p: 1 }, { s: 'tsukuri', k: 'weld', p: 0 }, { s: 'tsukuri', k: 'weld', p: 0 }]);
-  setBpm(126);
+  setBpm(110);
   rest('section', { id: 'nobashi' });
   {
-    const d1 = pick(POOLS.hard), d2 = pick(POOLS.expert), nd = d1.length + d2.length;
+    const d1 = pick(POOLS.mid), d2 = pick(POOLS.hard), nd = d1.length + d2.length;
     callResponse(d1, spread('nobashi', 'draw', d1, 0.06, 0.45, { n: nd }));
-    setBpm(132);
+    setBpm(112);
     callResponse(d2, spread('nobashi', 'draw', d2, 0.5, 0.92, { n: nd }));
   }
-  callResponse(pick([[0, 2], [0, 3], [0, 6]]), [{ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' }]);
+  callResponse(pick([[0, 4], [0, 8]]), [{ s: 'nobashi', k: 'tip' }, { s: 'nobashi', k: 'tip' }]);
   rest('yaki');
   // 太鼓を打つ時刻（小節ごとの拍）
   const drumList = [];
