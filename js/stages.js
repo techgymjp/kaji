@@ -113,6 +113,18 @@ function stageKatana({ root, scope, state, finish, section }) {
   const NOB_X = 70, NOB_MAX = 700;
   const BEAT = 60 / 100;       // 最初のテンポ（進むほど少しずつ速くなる）
   const WIN = { perfect: 0.06, good: 0.11, ok: 0.18 };
+  /* 一打の出来の値。判定（会心・良し・ずれ）の範囲はそのままに、ずれ 1 ミリ秒ごとに値を細かく刻む。
+     会心 0〜60ms：1.00 → 0.85 ／ 良し 61〜110ms：0.85 → 0.55 ／ ずれ 111〜180ms：0.55 → 0.15 */
+  const VALUE_PTS = [[0, 1], [60, 0.85], [110, 0.55], [180, 0.15]];
+  function hitValue(sec) {
+    const ms = Math.round(Math.abs(sec) * 1000);
+    for (let i = 1; i < VALUE_PTS.length; i++) {
+      const [m0, v0] = VALUE_PTS[i - 1], [m1, v1] = VALUE_PTS[i];
+      if (ms <= m1) return Math.round(lerp(v0, v1, (ms - m0) / (m1 - m0)) * 1000) / 1000;
+    }
+    return 0;
+  }
+  const gradeOf = sec => (Math.abs(sec) <= WIN.perfect ? 'perfect' : Math.abs(sec) <= WIN.good ? 'good' : 'off');
 
   let T = 1320;
   let purity = 0.44, carbon = 0.88 + Math.random() * 0.04;
@@ -288,7 +300,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       if (n.t > now + 0.5) break;
     }
     if (best && bd <= WIN.ok) {
-      judge(best, bd <= WIN.perfect ? 1 : bd <= WIN.good ? 0.65 : 0.3);
+      judge(best, hitValue(bd), gradeOf(bd));
     } else {
       // 空振り
       const st = curStep();
@@ -312,10 +324,10 @@ function stageKatana({ root, scope, state, finish, section }) {
     if (st.s === 'tsukuri') return st.k === 'bend' ? 0.3 : st.k === 'close' ? 0.6 : 0.45;
     return clamp(st.p ?? 0.5, 0.03, 0.97);
   }
-  function logHit(st, q) {
+  function logHit(st, q, grade) {
     const pos = bladePos(st);
     hitLog.push({ pos, q, s: st.s });
-    if (q === 1) perfectRun.push(pos);
+    if (grade === 'perfect') perfectRun.push(pos);
     else {
       if (perfectRun.length >= 6) kinsuji.push(perfectRun[Math.floor(perfectRun.length / 2)]);
       perfectRun = [];
@@ -344,10 +356,10 @@ function stageKatana({ root, scope, state, finish, section }) {
     return { prof: prof.map(v => Math.round(v * 100) / 100), kinsuji: kinsuji.slice(0, 3), chikei, flaws };
   }
 
-  function judge(n, q) {
+  function judge(n, q, grade) {
     n.judged = true;
     const st = n.step;
-    logHit(st, q);
+    logHit(st, q, grade);
     const x = targetX(st), y = topY(st);
     acc[st.s].push(q);
     const hf = clamp((T - 850) / 450, 0.5, 1);
@@ -355,12 +367,14 @@ function stageKatana({ root, scope, state, finish, section }) {
       hammerFx = { x, y, t: 0 };
       shake = 3 + q * 7;
       T -= 9;
-      if (q === 1) Sound.clangPerfect(); else if (q >= 0.65) Sound.clang(1, false); else Sound.thunk();
+      if (grade === 'perfect') Sound.clangPerfect(); else if (grade === 'good') Sound.clang(1, false); else Sound.thunk();
       parts.spark(x, y, Math.round(8 + q * 30 * Math.max(0.3, heatGlow(T)) * (1.6 - purity)), { T: T + 80 });
       parts.flake(x, y, Math.round(3 + q * 7));
     }
-    if (q >= 0.65) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
-    lastJudge = { text: q === 1 ? L('会心', 'Perfect') : q >= 0.65 ? L('良し', 'Good') : q > 0 ? L('ずれ', 'Off') : L('見逃し', 'Miss'), t: time, q };
+    if (grade === 'perfect' || grade === 'good') { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
+    const name = { perfect: L('会心', 'Perfect'), good: L('良し', 'Good'), off: L('ずれ', 'Off'), miss: L('見逃し', 'Miss') }[grade];
+    // 出来の値を 100 点満点で添える（例：会心 98）
+    lastJudge = { text: grade === 'miss' ? name : `${name} ${Math.round(q * 100)}`, t: time, q, grade };
     apply(st, q, hf);
   }
 
@@ -770,7 +784,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       const k = (time - lastJudge.t) / 0.5;
       g.font = `bold ${Math.round(18 * uk)}px "Shippori Mincho", serif`;
       g.textAlign = 'center';
-      g.fillStyle = lastJudge.q >= 1 ? `rgba(255,224,140,${1 - k})` : lastJudge.q >= 0.65 ? `rgba(240,230,210,${1 - k})` : `rgba(200,150,130,${1 - k})`;
+      g.fillStyle = lastJudge.grade === 'perfect' ? `rgba(255,224,140,${1 - k})` : lastJudge.grade === 'good' ? `rgba(240,230,210,${1 - k})` : `rgba(200,150,130,${1 - k})`;
       g.fillText(lastJudge.text, VW / 2, 12 + 40 * uk - k * 6 * uk);
     }
     g.restore();
@@ -873,7 +887,7 @@ function stageKatana({ root, scope, state, finish, section }) {
       // 見逃し
       for (const n of pNotes) {
         if (n.judged) continue;
-        if (now > n.t + WIN.ok) { n.missed = true; judge(n, 0); }
+        if (now > n.t + WIN.ok) { n.missed = true; judge(n, 0, 'miss'); }
         else break;
       }
       // 折り返し
