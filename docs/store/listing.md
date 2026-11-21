@@ -20,7 +20,8 @@ Play Console の「ストアの掲載情報」に貼り付けて使います。�
 - **簡単な説明**（80 字）にも主要な語を入れる：刀鍛冶、日本刀、リズムゲーム、音ゲー、鍛錬、焼入れ
 - **詳しい説明**は、主要な語を自然な文の中で数回くり返す（詰め込みすぎは逆効果・規約違反）。冒頭の数行が「もっと見る」の前に表示されるので、遊び方と魅力を最初に書く
 - 他社のゲーム名や「No.1」などの表現は使わない（ポリシー違反）
-- 英語は「katana」「samurai sword」「rhythm game」「blacksmith」「forge」を入れる
+- 英語のアプリ名は「Katana Swordsmith: Rhythm Game」（30 字ちょうど）。katana・swordsmith・rhythm game の 3 つの検索語を名前に入れる
+- 英語の説明には「samurai sword」「blacksmith」「forge」も入れる
 
 ---
 
@@ -83,7 +84,7 @@ Play Console の「ストアの掲載情報」に貼り付けて使います。�
 **App name** (max 30 characters)
 
 ```
-Katana Kaji: Rhythm Forge
+Katana Swordsmith: Rhythm Game
 ```
 
 **Short description** (max 80 characters)
@@ -96,7 +97,7 @@ Echo your master's hammer and forge a katana in this Japanese rhythm game.
 
 ```
 Clang, clang, clang — HSSSS!
-Breathe in time with your master and forge a one-of-a-kind katana in this Japanese blacksmith rhythm game.
+Breathe in time with your master and forge a one-of-a-kind katana in this Japanese swordsmith rhythm game.
 
 Your master taps out a rhythm with his small hammer. In the next bar, echo the same rhythm with your big hammer.
 Just tap the screen — listen closely and strike on the beat.
@@ -126,7 +127,7 @@ Just tap the screen — listen closely and strike on the beat.
 • Plays offline (ads and sharing need a connection)
 • English and Japanese
 
-For fans of katana, samurai swords, blacksmithing and rhythm games.
+For fans of katana, samurai swords, swordsmiths, blacksmithing and rhythm games.
 Listen for your master's hammer — and strike.
 ```
 

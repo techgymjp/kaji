@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <!-- 英語の端末ではアプリ名を英語で表示する -->
-    <string name="app_name">Katana Kaji</string>
-    <string name="title_activity_main">Katana Kaji</string>
+    <string name="app_name">Katana Swordsmith</string>
+    <string name="title_activity_main">Katana Swordsmith</string>
 </resources>

@@ -58,7 +58,7 @@ function showTitle() {
   wrap.innerHTML = `
     <p class="kicker">${L('日本刀づくり', 'THE ART OF THE JAPANESE SWORD')}</p>
     <h1 class="logo"><span>刀</span><span>鍛</span><span>冶</span></h1>
-    ${EN ? '<p class="logo-en">KATANA KAJI</p>' : ''}
+    ${EN ? '<p class="logo-en">KATANA SWORDSMITH</p>' : ''}
     <p class="lead">${L('叩いて、叩いて、叩いて——ジュワッ。<br>師匠の小槌に合わせて大鎚を振るい、世界に一振りの日本刀を打て。', 'Strike, strike, strike — hiss.<br>Swing the big hammer to your master’s rhythm and forge a one-of-a-kind katana.')}</p>`;
   wrap.append(c);
   const menu = el('div', 'menu');
@@ -511,7 +511,7 @@ if (NATIVE && Capacitor.Plugins && Capacitor.Plugins.App) {
   });
 }
 document.getElementById('sound').textContent = L('音：入', 'SFX: On');
-document.getElementById('home').textContent = L('刀鍛冶', 'Katana Kaji');
+document.getElementById('home').textContent = L('刀鍛冶', 'Katana Swordsmith');
 const langBtn = document.getElementById('lang');
 langBtn.textContent = EN ? '日本語' : 'English';
 langBtn.addEventListener('click', () => {

@@ -24,7 +24,7 @@ function setLang(lang) {
 }
 
 document.documentElement.lang = LANG;
-if (EN) document.title = 'Katana Kaji — Forge a Japanese Sword';
+if (EN) document.title = 'Katana Swordsmith: Rhythm Game';
 
 /* 保存データ中の日本語の名称を表示言語に変換する */
 const TERM_EN = {

@@ -11,7 +11,7 @@ const Share = (() => {
   }
   function baseText(rec) {
     return EN
-      ? `I forged a katana in Katana Kaji!\n“${term(rec.name)}” — ${term(rec.rank)} (Total ${rec.total})\nSharpness ${rec.sharp} · Toughness ${rec.tough} · Beauty ${rec.beauty}\n#KatanaKaji #katana`
+      ? `I forged a katana in Katana Swordsmith!\n“${term(rec.name)}” — ${term(rec.rank)} (Total ${rec.total})\nSharpness ${rec.sharp} · Toughness ${rec.tough} · Beauty ${rec.beauty}\n#KatanaSwordsmith #katana`
       : `刀鍛冶で日本刀を一振り打った！\n号「${rec.name}」　${rec.rank}（総合${rec.total}）\n切れ味${rec.sharp}・強靭さ${rec.tough}・美しさ${rec.beauty}\n#刀鍛冶 #日本刀づくり`;
   }
 
@@ -28,7 +28,7 @@ const Share = (() => {
     const F = '"Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif';
     g.textAlign = 'left';
     g.fillStyle = '#d2ae63'; g.font = `600 26px ${F}`;
-    g.fillText(L('刀鍛冶 ― 日本刀づくり', '刀鍛冶  KATANA KAJI'), 64, 84);
+    g.fillText(L('刀鍛冶 ― 日本刀づくり', '刀鍛冶  KATANA SWORDSMITH'), 64, 84);
     g.fillStyle = '#f3ead8'; g.font = `800 64px ${F}`;
     g.fillText(L(`号「${rec.name}」`, `“${term(rec.name)}”`), 64, 168);
     g.fillStyle = '#b8a890'; g.font = `400 26px ${F}`;
@@ -85,7 +85,7 @@ const Share = (() => {
     const capShare = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.Share;
     if (capShare) {
       row.append(btn(L('シェアする', 'Share'), 'primary share-native', () => {
-        capShare.share({ title: L('刀鍛冶 ― 日本刀づくり', 'Katana Kaji'), text: msg, url, dialogTitle: L('この一振りを披露する', 'Share your sword') }).catch(() => {});
+        capShare.share({ title: L('刀鍛冶 ― 日本刀づくり', 'Katana Swordsmith'), text: msg, url, dialogTitle: L('この一振りを披露する', 'Share your sword') }).catch(() => {});
       }));
       row.append(btn(L('文章をコピー', 'Copy Text'), '', async () => {
         try { await navigator.clipboard.writeText(msg + '\n' + url); toast(L('コピーしました', 'Copied')); }
@@ -99,7 +99,7 @@ const Share = (() => {
         try {
           const blob = await toBlob(getCard());
           const file = new File([blob], 'katana.png', { type: 'image/png' });
-          const data = { title: L('刀鍛冶 ― 日本刀づくり', 'Katana Kaji — Forge a Japanese Sword'), text: msg, url };
+          const data = { title: L('刀鍛冶 ― 日本刀づくり', 'Katana Swordsmith: Rhythm Game'), text: msg, url };
           if (navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file];
           await navigator.share(data);
         } catch (e) { /* キャンセルは無視 */ }
