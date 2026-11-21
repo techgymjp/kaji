@@ -279,3 +279,10 @@ a.btn { text-decoration: none; display: inline-block; }
 /* タイトル画面の下：版・プライバシーポリシー・広告の設定 */
 .app-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; color: var(--muted); font-size: 13px; margin: 6px 0 70px; }
 .app-foot a, .app-foot button { color: var(--muted); font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+
+/* 幅の狭いスマホでも上部のメニューを1行に収める */
+.topbar .link { white-space: nowrap; }
+@media (max-width: 400px) {
+  .topbar-right { gap: 4px; }
+  .topbar .link { letter-spacing: .04em; font-size: 13px; padding: 6px 2px; }
+}
