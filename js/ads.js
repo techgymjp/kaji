@@ -12,7 +12,7 @@ window.Ads = (() => {
       },
       // 本番の広告ユニット（AdMob の「刀鍛冶」Android）。空の種類は本番ビルドでは出さない
       production: {
-        interstitial: '',
+        interstitial: 'ca-app-pub-6411535997477460/5946611492',
         rewarded: '',
         banner: 'ca-app-pub-6411535997477460/8572774839',
       },
