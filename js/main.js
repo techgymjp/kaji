@@ -243,10 +243,10 @@ function computeResult(st) {
   let tough = 0.25 * kw + 0.35 * sh + 0.3 * k + 0.1 * n;
   let beauty = 0.3 * kw + 0.35 * n + 0.35 * q;
   if (st.crack) { tough *= 0.35; sharp *= 0.7; beauty *= 0.75; }
-  const total = Math.round((sharp + tough + beauty) / 3);
+  const total = r3((sharp + tough + beauty) / 3);
   let rank = RANKS.find(r => total >= r[0]);
   if (st.crack && rank[0] > 40) rank = RANKS[4];
-  return { sharp: Math.round(sharp), tough: Math.round(tough), beauty: Math.round(beauty), total, rank };
+  return { sharp: r3(sharp), tough: r3(tough), beauty: r3(beauty), total, rank };
 }
 
 function appraiserWords(st, r) {
@@ -373,19 +373,19 @@ function showAppraisal() {
 
   if (rec.marks) wrap.append(markPanel(rec));
   const body = el('div', 'appraisal-body');
-  const seal = el('div', 'rank-seal', `<span class="rank">${term(r.rank[1])}</span><span class="yomi">${r.rank[2]}</span><span class="total">${L('総合', 'Total')} ${r.total}</span>`);
+  const seal = el('div', 'rank-seal', `<span class="rank">${term(r.rank[1])}</span><span class="yomi">${r.rank[2]}</span><span class="total">${L('総合', 'Total')} ${pts(r.total)}</span>`);
   const stats = el('div', 'stats');
-  const bar = (label, v) => `<div class="statbar"><span>${label}</span><i><b style="width:${v}%"></b></i><em>${v}</em></div>`;
+  const bar = (label, v) => `<div class="statbar"><span>${label}</span><i><b style="width:${v}%"></b></i><em>${pts(v)}</em></div>`;
   stats.innerHTML = bar(L('切れ味', 'Sharpness'), r.sharp) + bar(L('強靭さ', 'Toughness'), r.tough) + bar(L('美しさ', 'Beauty'), r.beauty);
   const detail = el('dl', 'detail');
   const [PO, PC] = EN ? [' (', ')'] : ['（', '）'];
   const sc = state.scores;
   detail.innerHTML = `
-    <dt>${L('皮鉄', 'Skin')}</dt><dd>${sc.kawa}${PO}${L(`${state.folds}回`, `${state.folds}×`)}${PC}</dd>
-    <dt>${L('心鉄', 'Core')}</dt><dd>${sc.shin ?? '-'}</dd>
-    <dt>${L('造り込み', 'Lamination')}</dt><dd>${sc.tsukuri}</dd>
-    <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${sc.nobashi}</dd>
-    <dt>${L('焼入れ', 'Quench')}</dt><dd>${sc.quench}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd>
+    <dt>${L('皮鉄', 'Skin')}</dt><dd>${pts(sc.kawa)}${PO}${L(`${state.folds}回`, `${state.folds}×`)}${PC}</dd>
+    <dt>${L('心鉄', 'Core')}</dt><dd>${pts(sc.shin)}</dd>
+    <dt>${L('造り込み', 'Lamination')}</dt><dd>${pts(sc.tsukuri)}</dd>
+    <dt>${L('打ち延ばし', 'Drawing')}</dt><dd>${pts(sc.nobashi)}</dd>
+    <dt>${L('焼入れ', 'Quench')}</dt><dd>${pts(sc.quench)}${PO}${L('約', '~')}${state.quenchT}℃${PC}</dd>
     <dt>${L('刃文', 'Hamon')}</dt><dd>${term(state.hamonName)}</dd>${state.redo ? `<dt>${L('焼き直し', 'Re-quench')}</dt><dd>${L(state.redo + '回', '×' + state.redo)}</dd>` : ''}`;
   stats.append(detail);
   body.append(seal, stats);
@@ -441,7 +441,7 @@ function showKura() {
     item.append(c);
     item.append(el('div', 'kura-info', `
       <h3>${L(`「${rec.name}」`, `“${term(rec.name)}”`)}<small>${rec.smith ? L(rec.smith + '作', 'by ' + rec.smith) : L('無銘', 'unsigned')}</small></h3>
-      <p><span class="rank-tag">${term(rec.rank)}</span> ${L('総合', 'Total')} ${rec.total}　${L(`切れ味 ${rec.sharp}・強靭さ ${rec.tough}・美しさ ${rec.beauty}`, `Sharp ${rec.sharp} · Tough ${rec.tough} · Beauty ${rec.beauty}`)}</p>
+      <p><span class="rank-tag">${term(rec.rank)}</span> ${L('総合', 'Total')} ${pts(rec.total)}　${L(`切れ味 ${pts(rec.sharp)}・強靭さ ${pts(rec.tough)}・美しさ ${pts(rec.beauty)}`, `Sharp ${pts(rec.sharp)} · Tough ${pts(rec.tough)} · Beauty ${pts(rec.beauty)}`)}</p>
       <p class="small">${EN
         ? `${rec.method ? term(rec.method) + ' · ' : ''}${term(rec.hamonName) || ''} hamon · ${rec.folds} folds${rec.crack ? ' · <span class="bad">quench crack</span>' : ''}`
         : `${rec.date || ''}　${rec.method ? rec.method + '・' : ''}${rec.hamonName || ''}の刃文・${rec.folds}回鍛錬${rec.crack ? '・<span class="bad">焼割れ</span>' : ''}`}</p>`));

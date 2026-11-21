@@ -11,8 +11,8 @@ const Share = (() => {
   }
   function baseText(rec) {
     return EN
-      ? `I forged a katana in Katana Swordsmith!\n“${term(rec.name)}” — ${term(rec.rank)} (Total ${rec.total})\nSharpness ${rec.sharp} · Toughness ${rec.tough} · Beauty ${rec.beauty}\n#KatanaSwordsmith #katana`
-      : `刀鍛冶で日本刀を一振り打った！\n号「${rec.name}」　${rec.rank}（総合${rec.total}）\n切れ味${rec.sharp}・強靭さ${rec.tough}・美しさ${rec.beauty}\n#刀鍛冶 #日本刀づくり`;
+      ? `I forged a katana in Katana Swordsmith!\n“${term(rec.name)}” — ${term(rec.rank)} (Total ${pts(rec.total)})\nSharpness ${pts(rec.sharp)} · Toughness ${pts(rec.tough)} · Beauty ${pts(rec.beauty)}\n#KatanaSwordsmith #katana`
+      : `刀鍛冶で日本刀を一振り打った！\n号「${rec.name}」　${rec.rank}（総合${pts(rec.total)}）\n切れ味${pts(rec.sharp)}・強靭さ${pts(rec.tough)}・美しさ${pts(rec.beauty)}\n#刀鍛冶 #日本刀づくり`;
   }
 
   /* シェア用の画像 */
@@ -42,7 +42,7 @@ const Share = (() => {
     g.fillStyle = '#e0563c'; g.textAlign = 'center';
     const rk = term(rec.rank);
     g.font = `800 ${EN ? (rk.length > 12 ? 24 : 28) : rec.rank.length > 4 ? 34 : 42}px ${F}`; g.fillText(rk, 0, 2);
-    g.font = `400 24px ${F}`; g.fillStyle = '#f3ead8'; g.fillText(`${L('総合', 'Total')} ${rec.total}`, 0, 48);
+    g.font = `400 24px ${F}`; g.fillStyle = '#f3ead8'; g.fillText(`${L('総合', 'Total')} ${pts(rec.total)}`, 0, 48);
     g.restore();
     // 能力
     const stats = [[L('切れ味', 'Sharpness'), rec.sharp], [L('強靭さ', 'Toughness'), rec.tough], [L('美しさ', 'Beauty'), rec.beauty]];
@@ -50,8 +50,8 @@ const Share = (() => {
       const x = 64 + i * 370, y = 500;
       g.textAlign = 'left'; g.fillStyle = '#b8a890'; g.font = `400 26px ${F}`;
       g.fillText(label, x, y);
-      g.fillStyle = '#f3ead8'; g.font = `800 40px ${F}`; g.textAlign = 'right';
-      g.fillText(String(v), x + 320, y + 4);
+      g.fillStyle = '#f3ead8'; g.font = `800 34px ${F}`; g.textAlign = 'right';
+      g.fillText(pts(v), x + 320, y + 4);
       g.fillStyle = '#2a2018'; g.fillRect(x, y + 22, 320, 12);
       const gr = g.createLinearGradient(x, 0, x + 320, 0);
       gr.addColorStop(0, '#7a2414'); gr.addColorStop(0.6, '#e0563c'); gr.addColorStop(1, '#f0cf80');

@@ -374,7 +374,7 @@ function stageKatana({ root, scope, state, finish, section }) {
     if (grade === 'perfect' || grade === 'good') { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
     const name = { perfect: L('会心', 'Perfect'), good: L('良し', 'Good'), off: L('ずれ', 'Off'), miss: L('見逃し', 'Miss') }[grade];
     // 出来の値を 100 点満点で添える（例：会心 98）
-    lastJudge = { text: grade === 'miss' ? name : `${name} ${Math.round(q * 100)}`, t: time, q, grade };
+    lastJudge = { text: grade === 'miss' ? name : `${name} ${pts(q * 100)}`, t: time, q, grade };
     apply(st, q, hf);
   }
 
@@ -475,11 +475,11 @@ function stageKatana({ root, scope, state, finish, section }) {
     Sound.stopLoops();
     const carbonScore = clamp(1 - Math.abs(carbon - 0.68) / 0.3, 0, 1);
     state.scores = {
-      kawa: Math.round(clamp((purity - 0.45) / 0.5 * 80 + carbonScore * 20, 0, 100)),
-      shin: Math.round(avg(acc.shin) * 100),
-      tsukuri: Math.round(avg(acc.tsukuri) * 100 * (1 - Math.abs(coreOff) / 40)),
-      nobashi: Math.round(avg(acc.nobashi) * 100),
-      quench: Math.round(yk.qq * 100 * (yk.crack ? 0.4 : 1))
+      kawa: r3(clamp((purity - 0.45) / 0.5 * 80 + carbonScore * 20, 0, 100)),
+      shin: r3(avg(acc.shin) * 100),
+      tsukuri: r3(avg(acc.tsukuri) * 100 * (1 - Math.abs(coreOff) / 40)),
+      nobashi: r3(avg(acc.nobashi) * 100),
+      quench: r3(yk.qq * 100 * (yk.crack ? 0.4 : 1))
     };
     Object.assign(state, {
       folds, purity, carbon, maxCombo,

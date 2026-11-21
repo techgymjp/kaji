@@ -167,7 +167,7 @@ kbd { font-family: inherit; font-size: .85em; border: 1px solid var(--line); bor
 .rank-seal .yomi { font-size: 11px; color: #c06a58; }
 .rank-seal .total { margin-top: 6px; font-size: 16px; color: var(--ink); }
 .stats { min-width: 280px; flex: 1; max-width: 460px; text-align: left; }
-.statbar { display: grid; grid-template-columns: max-content 1fr 2.5em; align-items: center; gap: 8px; margin: 4px 0; }
+.statbar { display: grid; grid-template-columns: max-content 1fr 4.2em; align-items: center; gap: 8px; margin: 4px 0; }
 .statbar i { height: 12px; background: #2a2018; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .statbar b { display: block; height: 100%; background: linear-gradient(90deg, #7a2414, #e0563c, #f0cf80); animation: grow 1.2s .5s both; }
 @keyframes grow { from { width: 0 !important; } }

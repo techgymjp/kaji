@@ -59,6 +59,10 @@ function uiK(c, max = 2.2) {
 }
 const fs = (c, px, max) => Math.round(px * uiK(c, max));
 
+/* 点数の表示：小数点第3位まで（例：95.432） */
+const r3 = v => Math.round(v * 1000) / 1000;
+const pts = v => (v == null || isNaN(v) ? '-' : Number(v).toFixed(3));
+
 function canvasPos(c, e) {
   const r = c.getBoundingClientRect();
   return [(e.clientX - r.left) * c.W / r.width, (e.clientY - r.top) * c.H / r.height];
